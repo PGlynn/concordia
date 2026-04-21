@@ -2,6 +2,7 @@ let source = null;
 let draft = null;
 let activeTab = "config";
 let latestStatus = null;
+let inspectorState = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -17,6 +18,12 @@ async function api(path, options = {}) {
 
 function pretty(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function displayValue(value) {
+  if (Array.isArray(value)) return value.join("\n");
+  if (value && typeof value === "object") return pretty(value);
+  return String(value ?? "");
 }
 
 function escapeHtml(value) {
@@ -407,11 +414,16 @@ async function refreshStatus() {
     const json = rel(links.structured_log);
     const cfg = rel(links.config_snapshot);
     return `<li><strong>${escapeHtml(id)}</strong> ${escapeHtml(run.status || "")}
+      <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Inspect</button>
       ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
       ${json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">json</a>` : ""}
       ${cfg ? `<a href="/artifacts/${escapeHtml(cfg)}" target="_blank">config</a>` : ""}
     </li>`;
   }).join("");
+  if (!inspectorState && payload.recent_runs.length) {
+    const run = payload.recent_runs.find((item) => item.artifacts?.structured_log);
+    if (run) loadInspector(run.run_id).catch((error) => setInspectorMessage(error.message, true));
+  }
 }
 
 function displayRunState(payload) {
@@ -445,6 +457,94 @@ function updateControlButtons(payload = latestStatus) {
   $("controlPause").disabled = !hasControl || isPaused;
   $("controlStep").disabled = !hasControl || !isPaused;
   $("controlStop").disabled = !hasControl;
+}
+
+function setInspectorMessage(text, isError = false) {
+  $("inspectorMessage").textContent = text;
+  $("inspectorMessage").className = isError ? "error" : "muted";
+}
+
+async function loadInspector(runId, selection = {}) {
+  let path = `/api/inspect/${encodeURIComponent(runId)}`;
+  if (selection.step !== undefined) {
+    const params = new URLSearchParams({step: String(selection.step)});
+    if (selection.entity_name) params.set("entity", selection.entity_name);
+    if (selection.index !== undefined) params.set("index", String(selection.index));
+    path += `?${params.toString()}`;
+  }
+  inspectorState = await api(path);
+  renderInspector();
+}
+
+function renderInspector() {
+  if (!inspectorState) return;
+  const selected = inspectorState.selected;
+  $("inspectorRunId").textContent = inspectorState.run_id || "";
+  $("inspectorRunInput").value = inspectorState.run_id || $("inspectorRunInput").value;
+  $("turnSelect").innerHTML = (inspectorState.entries || []).map((entry) => {
+    const isSelected = selected && entry.index === selected.index ? " selected" : "";
+    const action = displayValue(entry.action || entry.summary).replace(/\s+/g, " ").trim();
+    const label = `Step ${entry.step} - ${entry.entity_name}${action ? ` - ${action.slice(0, 80)}` : ""}`;
+    return `<option value="${escapeHtml(entry.index)}"${isSelected}>${escapeHtml(label)}</option>`;
+  }).join("");
+  if (!inspectorState.available) {
+    setInspectorMessage(inspectorState.error || "No structured log is available.", true);
+    $("turnInspector").innerHTML = "";
+    return;
+  }
+  setInspectorMessage("");
+  if (!selected) {
+    $("turnInspector").innerHTML = '<div class="muted">No inspectable entries in this run.</div>';
+    return;
+  }
+  $("turnInspector").innerHTML = renderTurnDetail(selected);
+}
+
+function renderTextBlock(title, value) {
+  const text = displayValue(value).trim();
+  if (!text) return "";
+  return `<div class="inspector-block"><h3>${escapeHtml(title)}</h3><pre>${escapeHtml(text)}</pre></div>`;
+}
+
+function renderListBlock(title, values) {
+  if (!values || !values.length) return "";
+  return `<div class="inspector-block"><h3>${escapeHtml(title)}</h3><ul>${values.map((value) =>
+    `<li>${escapeHtml(displayValue(value))}</li>`
+  ).join("")}</ul></div>`;
+}
+
+function renderComponentRows(components) {
+  if (!components || !components.length) return "";
+  return `<div class="inspector-block"><h3>Component Outputs</h3>${components.map((item) =>
+    `<details open><summary>${escapeHtml(item.name)}</summary><pre>${escapeHtml(displayValue(item.value))}</pre></details>`
+  ).join("")}</div>`;
+}
+
+function renderGmEntries(entries) {
+  if (!entries || !entries.length) return "";
+  return `<div class="inspector-block"><h3>GM Reaction / Context</h3>${entries.map((entry) =>
+    `<details open><summary>${escapeHtml(entry.entity_name || "GM")} ${escapeHtml(entry.summary || "")}</summary><pre>${escapeHtml(displayValue(entry.data))}</pre></details>`
+  ).join("")}</div>`;
+}
+
+function renderTurnDetail(turn, state = inspectorState) {
+  const meta = [
+    ["Run", state?.run_id || ""],
+    ["Step", turn.step],
+    ["Entity", turn.entity_name],
+    ["Summary", turn.summary],
+  ];
+  return `<div class="status-grid compact">${meta.map(([key, value]) =>
+    `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
+  ).join("")}</div>
+  ${renderTextBlock("Action", turn.action)}
+  ${renderTextBlock("Action Prompt", turn.action_prompt)}
+  ${renderListBlock("Observations", turn.observations)}
+  ${renderComponentRows(turn.components)}
+  ${renderListBlock("Entity Memories", turn.entity_memories)}
+  ${renderGmEntries(turn.game_master_entries)}
+  ${renderListBlock("Game Master Memories", turn.game_master_memories)}
+  <details><summary>Raw Entry</summary><pre>${escapeHtml(displayValue(turn.raw_entry))}</pre></details>`;
 }
 
 async function init() {
@@ -602,6 +702,12 @@ if (typeof document !== "undefined") {
   });
 
   document.addEventListener("click", (event) => {
+    const inspectRun = event.target.closest("[data-inspect-run]");
+    if (inspectRun) {
+      loadInspector(inspectRun.dataset.inspectRun)
+        .catch((error) => setInspectorMessage(error.message, true));
+      return;
+    }
     const removeType = event.target.closest("[data-remove-type]");
     const removeScene = event.target.closest("[data-remove-scene]");
     if (!removeType && !removeScene) return;
@@ -627,12 +733,36 @@ if (typeof document !== "undefined") {
     });
   });
 
+  $("loadInspector").addEventListener("click", async () => {
+    try {
+      const runId = $("inspectorRunInput").value.trim();
+      if (!runId) throw new Error("Enter a run id.");
+      await loadInspector(runId);
+    } catch (error) {
+      setInspectorMessage(error.message, true);
+    }
+  });
+
+  $("turnSelect").addEventListener("change", async () => {
+    try {
+      if (!inspectorState) return;
+      const index = Number($("turnSelect").value);
+      const entry = (inspectorState.entries || []).find((item) => item.index === index);
+      if (!entry) return;
+      await loadInspector(inspectorState.run_id, entry);
+    } catch (error) {
+      setInspectorMessage(error.message, true);
+    }
+  });
+
   init().catch((error) => setMessage(error.message, true));
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
+    displayValue,
     mergeSelectionDraft,
     remapSceneForSelection,
+    renderTurnDetail,
   };
 }

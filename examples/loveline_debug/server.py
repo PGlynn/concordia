@@ -12,6 +12,7 @@ import http.server
 import socketserver
 
 from examples.loveline_debug import config_io
+from examples.loveline_debug import inspector
 from examples.loveline_debug import runner
 
 
@@ -54,6 +55,8 @@ class LovelineDebugApp:
             self._send_json(app.runs.status())
           elif parsed.path == "/api/runs":
             self._send_json(app.runs.list_runs())
+          elif parsed.path.startswith("/api/inspect/"):
+            self._send_json(self._inspect_run(parsed))
           elif parsed.path.startswith("/artifacts/"):
             self._serve_artifact(parsed.path.removeprefix("/artifacts/"))
           else:
@@ -113,6 +116,27 @@ class LovelineDebugApp:
           self.send_error(403)
           return
         self._serve_file(artifact_path)
+
+      def _inspect_run(self, parsed: parse.ParseResult) -> dict[str, Any]:
+        run_id = parsed.path.removeprefix("/api/inspect/")
+        run_dir = (app.paths.runs_dir / run_id).resolve()
+        runs_root = app.paths.runs_dir.resolve()
+        if runs_root not in run_dir.parents and run_dir != runs_root:
+          raise ValueError("Run path is outside the Loveline runs directory.")
+        query = parse.parse_qs(parsed.query)
+        if "step" not in query:
+          return inspector.json_safe(inspector.load_run_inspector(run_dir))
+        index = None
+        if query.get("index", [""])[0] != "":
+          index = int(query["index"][0])
+        return inspector.json_safe(
+            inspector.load_turn_inspector(
+                run_dir,
+                step=int(query["step"][0]),
+                entity=query.get("entity", [None])[0],
+                index=index,
+            )
+        )
 
     return Handler
 
