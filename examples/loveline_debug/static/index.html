@@ -103,6 +103,10 @@
     }
     button.warn { background: var(--warn); border-color: var(--warn); }
     button.small { padding: 4px 8px; font-size: 12px; }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
     .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
     .tabs button { background: white; color: var(--ink); border-color: var(--line); }
     .tabs button.active { background: var(--accent); color: white; border-color: var(--accent); }
@@ -125,6 +129,21 @@
       border-radius: 6px;
       padding: 10px;
       min-height: 140px;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 5px 8px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .status-grid dt {
+      color: var(--muted);
+      font-weight: 650;
+    }
+    .status-grid dd {
+      margin: 0;
+      overflow-wrap: anywhere;
     }
     .editor-block {
       border: 1px solid var(--line);
@@ -166,7 +185,7 @@
     <div class="row" style="max-width: 520px">
       <input id="draftName" value="two_candidate_debug" aria-label="Draft name">
       <button id="saveDraft">Save Draft</button>
-      <button id="runDraft" class="warn">Run</button>
+      <button id="runDraft" class="warn">Launch Run</button>
     </div>
   </header>
   <main>
@@ -220,6 +239,7 @@
             <label>API Type<input id="apiType"></label>
             <label>Model<input id="modelName"></label>
             <label class="checkline"><input id="disableLm" type="checkbox"> Disable language model</label>
+            <label class="checkline"><input id="startPaused" type="checkbox"> Start paused</label>
             <label class="checkline"><input id="checkpointEveryStep" type="checkbox"> Checkpoint every step</label>
           </div>
         </div>
@@ -270,15 +290,16 @@
       <div class="band">
         <h2>Run Control</h2>
         <div class="row">
-          <button data-command="play" class="secondary">Play</button>
-          <button data-command="pause" class="secondary">Pause</button>
-          <button data-command="step" class="secondary">Step</button>
-          <button data-command="stop" class="secondary">Stop</button>
+          <button id="controlPlay" data-command="play" class="secondary">Play</button>
+          <button id="controlPause" data-command="pause" class="secondary">Pause</button>
+          <button id="controlStep" data-command="step" class="secondary">Step</button>
+          <button id="controlStop" data-command="stop" class="secondary">Stop</button>
         </div>
       </div>
       <div class="band">
         <h2>Status</h2>
         <div id="message" class="muted"></div>
+        <dl id="runSummary" class="status-grid"></dl>
         <pre id="status" class="status"></pre>
       </div>
       <div class="band">

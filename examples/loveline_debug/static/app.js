@@ -1,6 +1,7 @@
 let source = null;
 let draft = null;
 let activeTab = "config";
+let latestStatus = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -131,6 +132,7 @@ function renderConfigTab() {
   $("disableLm").checked = Boolean(draft.run?.disable_language_model);
   $("apiType").value = draft.run?.api_type || "openai";
   $("modelName").value = draft.run?.model_name || "gpt-4o";
+  $("startPaused").checked = draft.run?.start_paused !== false;
   $("checkpointEveryStep").checked = draft.run?.checkpoint_every_step !== false;
   $("configRawJson").value = pretty({
     schema_version: draft.schema_version,
@@ -273,6 +275,7 @@ function collectConfigForm() {
     disable_language_model: $("disableLm").checked,
     api_type: $("apiType").value,
     model_name: $("modelName").value,
+    start_paused: $("startPaused").checked,
     checkpoint_every_step: $("checkpointEveryStep").checked,
   };
 }
@@ -389,7 +392,13 @@ async function refreshDrafts() {
 
 async function refreshStatus() {
   const payload = await api("/api/status");
-  $("status").textContent = pretty(payload.active || {status: "idle"});
+  latestStatus = payload;
+  renderRunSummary(payload);
+  updateControlButtons(payload);
+  $("status").textContent = pretty({
+    active: payload.active || {status: "idle"},
+    control: payload.control || null,
+  });
   $("recentRuns").innerHTML = payload.recent_runs.map((run) => {
     const id = run.run_id;
     const links = run.artifacts || {};
@@ -403,6 +412,39 @@ async function refreshStatus() {
       ${cfg ? `<a href="/artifacts/${escapeHtml(cfg)}" target="_blank">config</a>` : ""}
     </li>`;
   }).join("");
+}
+
+function displayRunState(payload) {
+  const active = payload.active;
+  if (!active) return "idle";
+  if (payload.control?.state) return payload.control.state;
+  return active.status || "unknown";
+}
+
+function renderRunSummary(payload) {
+  const active = payload.active;
+  const rows = active
+    ? [
+        ["Run", active.run_id],
+        ["Lifecycle", active.status],
+        ["Control", displayRunState(payload)],
+        ["Step", payload.control?.current_step ?? active.current_step ?? 0],
+        ["Launch", active.start_paused ? "started paused" : "started playing"],
+      ]
+    : [["Run", "none"], ["Lifecycle", "idle"], ["Control", "idle"], ["Step", "0"]];
+  $("runSummary").innerHTML = rows.map(([key, value]) =>
+    `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
+  ).join("");
+}
+
+function updateControlButtons(payload = latestStatus) {
+  const hasControl = Boolean(payload?.control);
+  const isPaused = Boolean(payload?.control?.is_paused);
+  const isRunning = Boolean(payload?.control?.is_running);
+  $("controlPlay").disabled = !hasControl || isRunning;
+  $("controlPause").disabled = !hasControl || isPaused;
+  $("controlStep").disabled = !hasControl || !isPaused;
+  $("controlStop").disabled = !hasControl;
 }
 
 async function init() {
@@ -477,7 +519,8 @@ if (typeof document !== "undefined") {
         method: "POST",
         body: JSON.stringify({draft: collectDraft()}),
       });
-      setMessage(`Started ${record.run_id}. Runs start paused; use Play or Step.`);
+      const launchMode = record.start_paused ? "paused" : "playing";
+      setMessage(`Started ${record.run_id} ${launchMode}.`);
       await refreshStatus();
     } catch (error) {
       setMessage(error.message, true);
@@ -576,6 +619,7 @@ if (typeof document !== "undefined") {
     button.addEventListener("click", async () => {
       try {
         await api(`/api/control/${button.dataset.command}`, {method: "POST", body: "{}"});
+        setMessage(`${button.textContent} sent.`);
         await refreshStatus();
       } catch (error) {
         setMessage(error.message, true);

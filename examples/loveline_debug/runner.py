@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
 import datetime as dt
 import json
@@ -28,6 +29,7 @@ class RunRecord:
   finished_at: str | None = None
   error: str | None = None
   current_step: int = 0
+  start_paused: bool = True
   transcript: list[dict[str, Any]] = dataclasses.field(default_factory=list)
   artifacts: dict[str, str] = dataclasses.field(default_factory=dict)
 
@@ -40,8 +42,9 @@ class RunRecord:
         "finished_at": self.finished_at,
         "error": self.error,
         "current_step": self.current_step,
-        "transcript": self.transcript[-80:],
-        "artifacts": self.artifacts,
+        "start_paused": self.start_paused,
+        "transcript": _json_safe(self.transcript[-80:]),
+        "artifacts": _json_safe(self.artifacts),
     }
 
 
@@ -60,16 +63,22 @@ class RunManager:
         raise RuntimeError(f"Run {self._active.run_id} is already active.")
       run_id = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
       run_dir = self._paths.runs_dir / run_id
+      start_paused = draft.get("run", {}).get("start_paused", True) is not False
+      control = simulation_server.SimulationServer(html_content="")
+      if not start_paused:
+        control.step_controller.play()
       record = RunRecord(
           run_id=run_id,
           status="starting",
           run_dir=run_dir,
           started_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+          start_paused=start_paused,
       )
       self._active = record
+      self._active_control = control
 
     thread = threading.Thread(
-        target=self._run_thread, args=(draft, record), daemon=True
+        target=self._run_thread, args=(draft, record, control), daemon=True
     )
     thread.start()
     return record
@@ -77,7 +86,13 @@ class RunManager:
   def status(self) -> dict[str, Any]:
     with self._lock:
       active = self._active.to_dict() if self._active else None
-    return {"active": active, "recent_runs": self.list_runs()}
+      control = self._active_control
+      control_state = self._control_state(control) if control else None
+    return {
+        "active": active,
+        "control": control_state,
+        "recent_runs": self.list_runs(),
+    }
 
   def control(self, command: str) -> dict[str, Any]:
     with self._lock:
@@ -97,8 +112,7 @@ class RunManager:
     return {
         "status": "ok",
         "command": command,
-        "is_running": control.step_controller.is_running,
-        "is_paused": control.step_controller.is_paused,
+        "control": self._control_state(control),
     }
 
   def list_runs(self) -> list[dict[str, Any]]:
@@ -118,10 +132,13 @@ class RunManager:
       runs.append({"run_id": path.name, "run_dir": str(path)})
     return runs[:20]
 
-  def _run_thread(self, draft: dict[str, Any], record: RunRecord) -> None:
-    control = simulation_server.SimulationServer(html_content="")
+  def _run_thread(
+      self,
+      draft: dict[str, Any],
+      record: RunRecord,
+      control: simulation_server.SimulationServer,
+  ) -> None:
     with self._lock:
-      self._active_control = control
       record.status = "running"
     try:
       snapshot = config_io.snapshot_for_run(draft, record.run_id)
@@ -142,6 +159,7 @@ class RunManager:
           model=model,
           embedder=config_io.deterministic_embedder,
       )
+      _install_json_safe_checkpointing(sim)
       control.set_simulation(sim)
       checkpoint_dir = record.run_dir / "checkpoints"
       control.broadcast_entity_info(sim.make_checkpoint_data())
@@ -168,8 +186,11 @@ class RunManager:
           "config_visualization": str(record.run_dir / "config_visualization.html"),
           "checkpoints": str(checkpoint_dir),
       }
-      record.status = "completed"
-      control.broadcast_completion()
+      if control.step_controller.should_stop():
+        record.status = "stopped"
+      else:
+        record.status = "completed"
+        control.broadcast_completion()
     except Exception as exc:  # pylint: disable=broad-exception-caught
       record.status = "failed"
       record.error = f"{exc}\n{traceback.format_exc()}"
@@ -177,7 +198,8 @@ class RunManager:
       record.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
       self._write_manifest(record)
       with self._lock:
-        self._active_control = None
+        if self._active_control is control:
+          self._active_control = None
 
   def _build_model(self, run_settings: dict[str, Any]):
     if run_settings.get("disable_language_model", True):
@@ -214,3 +236,77 @@ class RunManager:
     config_io.write_json(record.run_dir / "manifest.json", manifest)
     self._write_status(record)
 
+  @staticmethod
+  def _control_state(
+      control: simulation_server.SimulationServer,
+  ) -> dict[str, Any]:
+    is_running = control.step_controller.is_running
+    is_paused = control.step_controller.is_paused
+    if control.step_controller.should_stop():
+      is_running = False
+      is_paused = True
+    return {
+        "is_running": is_running,
+        "is_paused": is_paused,
+        "current_step": control.current_step_data.get("step", 0),
+        "state": "playing"
+        if is_running
+        else "paused",
+    }
+
+
+def _json_safe(value: Any, seen: set[int] | None = None) -> Any:
+  """Converts Concordia run callback data into JSON-serializable values."""
+  if value is None or isinstance(value, (bool, int, float, str)):
+    return value
+  if isinstance(value, Path):
+    return str(value)
+  if seen is None:
+    seen = set()
+  value_id = id(value)
+  if value_id in seen:
+    return repr(value)
+
+  if dataclasses.is_dataclass(value) and not isinstance(value, type):
+    seen.add(value_id)
+    try:
+      return {
+          field.name: _json_safe(getattr(value, field.name), seen)
+          for field in dataclasses.fields(value)
+      }
+    finally:
+      seen.remove(value_id)
+
+  if isinstance(value, collections.abc.Mapping):
+    seen.add(value_id)
+    try:
+      return {
+          str(_json_safe(key, seen)): _json_safe(item, seen)
+          for key, item in value.items()
+      }
+    finally:
+      seen.remove(value_id)
+
+  if isinstance(value, tuple) and hasattr(value, "_asdict"):
+    return _json_safe(value._asdict(), seen)
+
+  if isinstance(value, collections.abc.Sequence) and not isinstance(
+      value, (str, bytes, bytearray)
+  ):
+    seen.add(value_id)
+    try:
+      return [_json_safe(item, seen) for item in value]
+    finally:
+      seen.remove(value_id)
+
+  return repr(value)
+
+
+def _install_json_safe_checkpointing(sim: Any) -> None:
+  """Ensures Loveline debug checkpoints survive stock JSON checkpoint writes."""
+  make_checkpoint_data = sim.make_checkpoint_data
+
+  def make_json_safe_checkpoint_data() -> dict[str, Any]:
+    return _json_safe(make_checkpoint_data())
+
+  sim.make_checkpoint_data = make_json_safe_checkpoint_data

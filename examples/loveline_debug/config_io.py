@@ -152,6 +152,7 @@ def make_draft_for_selection(
           "api_type": "openai",
           "model_name": "gpt-4o",
           "api_key": None,
+          "start_paused": True,
           "checkpoint_every_step": True,
       },
   }
