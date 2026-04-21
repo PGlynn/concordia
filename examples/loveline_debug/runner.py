@@ -1,0 +1,216 @@
+"""Run Loveline drafts through stock Concordia surfaces."""
+
+from __future__ import annotations
+
+import dataclasses
+import datetime as dt
+import json
+import threading
+import traceback
+from pathlib import Path
+from typing import Any
+
+from concordia.contrib import language_models
+from concordia.language_model import no_language_model
+from concordia.prefabs.simulation import generic as simulation
+from concordia.utils import simulation_server
+from concordia.utils import visual_interface
+
+from examples.loveline_debug import config_io
+
+
+@dataclasses.dataclass
+class RunRecord:
+  run_id: str
+  status: str
+  run_dir: Path
+  started_at: str
+  finished_at: str | None = None
+  error: str | None = None
+  current_step: int = 0
+  transcript: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+  artifacts: dict[str, str] = dataclasses.field(default_factory=dict)
+
+  def to_dict(self) -> dict[str, Any]:
+    return {
+        "run_id": self.run_id,
+        "status": self.status,
+        "run_dir": str(self.run_dir),
+        "started_at": self.started_at,
+        "finished_at": self.finished_at,
+        "error": self.error,
+        "current_step": self.current_step,
+        "transcript": self.transcript[-80:],
+        "artifacts": self.artifacts,
+    }
+
+
+class RunManager:
+  """Owns one active Loveline debug run and recent run metadata."""
+
+  def __init__(self, paths: config_io.StarterPaths = config_io.StarterPaths()):
+    self._paths = paths
+    self._lock = threading.Lock()
+    self._active: RunRecord | None = None
+    self._active_control: simulation_server.SimulationServer | None = None
+
+  def start_run(self, draft: dict[str, Any]) -> RunRecord:
+    with self._lock:
+      if self._active and self._active.status in ("starting", "running"):
+        raise RuntimeError(f"Run {self._active.run_id} is already active.")
+      run_id = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+      run_dir = self._paths.runs_dir / run_id
+      record = RunRecord(
+          run_id=run_id,
+          status="starting",
+          run_dir=run_dir,
+          started_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+      )
+      self._active = record
+
+    thread = threading.Thread(
+        target=self._run_thread, args=(draft, record), daemon=True
+    )
+    thread.start()
+    return record
+
+  def status(self) -> dict[str, Any]:
+    with self._lock:
+      active = self._active.to_dict() if self._active else None
+    return {"active": active, "recent_runs": self.list_runs()}
+
+  def control(self, command: str) -> dict[str, Any]:
+    with self._lock:
+      control = self._active_control
+    if control is None:
+      raise RuntimeError("No active run control is available.")
+    if command == "play":
+      control.step_controller.play()
+    elif command == "pause":
+      control.step_controller.pause()
+    elif command == "step":
+      control.step_controller.step()
+    elif command == "stop":
+      control.step_controller.stop()
+    else:
+      raise ValueError(f"Unknown command: {command}")
+    return {
+        "status": "ok",
+        "command": command,
+        "is_running": control.step_controller.is_running,
+        "is_paused": control.step_controller.is_paused,
+    }
+
+  def list_runs(self) -> list[dict[str, Any]]:
+    if not self._paths.runs_dir.exists():
+      return []
+    runs = []
+    for path in sorted(self._paths.runs_dir.iterdir(), reverse=True):
+      if not path.is_dir():
+        continue
+      manifest = path / "manifest.json"
+      if manifest.exists():
+        try:
+          runs.append(json.loads(manifest.read_text(encoding="utf-8")))
+          continue
+        except json.JSONDecodeError:
+          pass
+      runs.append({"run_id": path.name, "run_dir": str(path)})
+    return runs[:20]
+
+  def _run_thread(self, draft: dict[str, Any], record: RunRecord) -> None:
+    control = simulation_server.SimulationServer(html_content="")
+    with self._lock:
+      self._active_control = control
+      record.status = "running"
+    try:
+      snapshot = config_io.snapshot_for_run(draft, record.run_id)
+      record.run_dir.mkdir(parents=True, exist_ok=True)
+      config_io.write_json(record.run_dir / "config_snapshot.json", snapshot)
+
+      config = config_io.build_config(snapshot)
+      config_html = visual_interface.visualize_config_to_html(
+          config, title=f"Loveline Debug {record.run_id}"
+      )
+      (record.run_dir / "config_visualization.html").write_text(
+          config_html, encoding="utf-8"
+      )
+
+      model = self._build_model(snapshot["run"])
+      sim = simulation.Simulation(
+          config=config,
+          model=model,
+          embedder=config_io.deterministic_embedder,
+      )
+      control.set_simulation(sim)
+      checkpoint_dir = record.run_dir / "checkpoints"
+      control.broadcast_entity_info(sim.make_checkpoint_data())
+
+      log = sim.play(
+          max_steps=int(snapshot["run"].get("max_steps") or 8),
+          checkpoint_path=(
+              str(checkpoint_dir)
+              if snapshot["run"].get("checkpoint_every_step", True)
+              else None
+          ),
+          step_controller=control.step_controller,
+          step_callback=lambda step: self._on_step(record, control, step),
+      )
+
+      json_path = record.run_dir / "structured_log.json"
+      html_path = record.run_dir / "log.html"
+      json_path.write_text(log.to_json(), encoding="utf-8")
+      html_path.write_text(log.to_html(), encoding="utf-8")
+      record.artifacts = {
+          "config_snapshot": str(record.run_dir / "config_snapshot.json"),
+          "structured_log": str(json_path),
+          "html_log": str(html_path),
+          "config_visualization": str(record.run_dir / "config_visualization.html"),
+          "checkpoints": str(checkpoint_dir),
+      }
+      record.status = "completed"
+      control.broadcast_completion()
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+      record.status = "failed"
+      record.error = f"{exc}\n{traceback.format_exc()}"
+    finally:
+      record.finished_at = dt.datetime.now(dt.timezone.utc).isoformat()
+      self._write_manifest(record)
+      with self._lock:
+        self._active_control = None
+
+  def _build_model(self, run_settings: dict[str, Any]):
+    if run_settings.get("disable_language_model", True):
+      return no_language_model.NoLanguageModel()
+    return language_models.language_model_setup(
+        api_type=run_settings.get("api_type", "openai"),
+        model_name=run_settings.get("model_name", "gpt-4o"),
+        api_key=run_settings.get("api_key") or None,
+        disable_language_model=False,
+    )
+
+  def _on_step(
+      self,
+      record: RunRecord,
+      control: simulation_server.SimulationServer,
+      step_data: Any,
+  ) -> None:
+    control.broadcast_step(step_data)
+    record.current_step = step_data.step
+    record.transcript.append({
+        "step": step_data.step,
+        "acting_entity": step_data.acting_entity,
+        "action": step_data.action,
+        "entity_actions": step_data.entity_actions,
+    })
+    self._write_status(record)
+
+  def _write_status(self, record: RunRecord) -> None:
+    config_io.write_json(record.run_dir / "status.json", record.to_dict())
+
+  def _write_manifest(self, record: RunRecord) -> None:
+    manifest = record.to_dict()
+    manifest.pop("transcript", None)
+    config_io.write_json(record.run_dir / "manifest.json", manifest)
+    self._write_status(record)
+

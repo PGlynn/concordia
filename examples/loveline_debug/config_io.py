@@ -1,0 +1,332 @@
+"""Draft snapshots and Concordia config construction for Loveline debug UI."""
+
+from __future__ import annotations
+
+import copy
+import dataclasses
+import datetime as dt
+import json
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from concordia.prefabs import entity as entity_prefabs
+from concordia.prefabs import game_master as game_master_prefabs
+from concordia.prefabs.game_master import formative_memories_initializer
+from concordia.typing import entity as entity_lib
+from concordia.typing import prefab as prefab_lib
+from concordia.typing import scene as scene_lib
+
+
+STARTER_ROOT = Path(
+    "/Users/claw/.openclaw/games/loveline/concordia_dating_show_starter"
+)
+DRAFT_SCHEMA_VERSION = 1
+
+
+class DraftValidationError(ValueError):
+  """Raised when a Loveline draft cannot be run."""
+
+
+@dataclasses.dataclass(frozen=True)
+class StarterPaths:
+  root: Path = STARTER_ROOT
+
+  @property
+  def personas_yaml(self) -> Path:
+    return self.root / "personas" / "personas.yaml"
+
+  @property
+  def scenes_yaml(self) -> Path:
+    return self.root / "scenes" / "scenes.yaml"
+
+  @property
+  def persona_bundle_json(self) -> Path:
+    return self.root / "generated" / "persona_bundle.json"
+
+  @property
+  def debug_root(self) -> Path:
+    return self.root / "generated" / "loveline_debug"
+
+  @property
+  def drafts_dir(self) -> Path:
+    return self.debug_root / "drafts"
+
+  @property
+  def runs_dir(self) -> Path:
+    return self.debug_root / "runs"
+
+
+def load_json(path: Path) -> dict[str, Any]:
+  return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path: Path, payload: Any) -> None:
+  path.parent.mkdir(parents=True, exist_ok=True)
+  path.write_text(
+      json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+      encoding="utf-8",
+  )
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+  with path.open("r", encoding="utf-8") as handle:
+    return yaml.safe_load(handle)
+
+
+def _candidate_gender(candidate: dict[str, Any]) -> str:
+  tags = candidate.get("derived_debug_tags", [])
+  if tags and tags[0] in ("man", "woman"):
+    return tags[0]
+  name = candidate.get("name")
+  return str(candidate.get("gender") or name or "")
+
+
+def _source_candidates(paths: StarterPaths) -> list[dict[str, Any]]:
+  personas = load_yaml(paths.personas_yaml)
+  bundle = load_json(paths.persona_bundle_json)
+  by_id = {item["id"]: item for item in bundle["contestants"]}
+  result = []
+  for persona in personas.get("contestants", []):
+    candidate = copy.deepcopy(by_id[persona["id"]])
+    candidate["source_persona"] = persona
+    candidate["gender"] = persona.get("gender", _candidate_gender(candidate))
+    candidate["age"] = persona.get("age")
+    result.append(candidate)
+  return result
+
+
+def list_source_data(paths: StarterPaths = StarterPaths()) -> dict[str, Any]:
+  scenes = load_yaml(paths.scenes_yaml)
+  return {
+      "starter_root": str(paths.root),
+      "candidates": _source_candidates(paths),
+      "scene_defaults": scenes.get("defaults", {}),
+      "scene_types": scenes.get("scene_types", {}),
+      "scenes": scenes.get("scenes", []),
+  }
+
+
+def _scene_mentions(scene: dict[str, Any], selected_names: set[str]) -> bool:
+  participants = set(scene.get("participants", []))
+  return bool(participants) and participants.issubset(selected_names)
+
+
+def make_default_draft(paths: StarterPaths = StarterPaths()) -> dict[str, Any]:
+  source = list_source_data(paths)
+  candidates = source["candidates"]
+  man = next(item for item in candidates if item["gender"] == "man")
+  woman = next(item for item in candidates if item["gender"] == "woman")
+  return make_draft_for_selection([man["id"], woman["id"]], paths)
+
+
+def make_draft_for_selection(
+    candidate_ids: list[str],
+    paths: StarterPaths = StarterPaths(),
+) -> dict[str, Any]:
+  source = list_source_data(paths)
+  by_id = {item["id"]: item for item in source["candidates"]}
+  contestants = [copy.deepcopy(by_id[candidate_id]) for candidate_id in candidate_ids]
+  selected_names = {item["name"] for item in contestants}
+  scenes = [
+      copy.deepcopy(scene)
+      for scene in source["scenes"]
+      if _scene_mentions(scene, selected_names)
+  ]
+  now = dt.datetime.now(dt.timezone.utc).isoformat()
+  return {
+      "schema_version": DRAFT_SCHEMA_VERSION,
+      "name": "two_candidate_debug",
+      "created_at": now,
+      "updated_at": now,
+      "source_root": str(paths.root),
+      "selected_candidate_ids": candidate_ids,
+      "contestants": contestants,
+      "scene_defaults": copy.deepcopy(source["scene_defaults"]),
+      "scene_types": copy.deepcopy(source["scene_types"]),
+      "scenes": scenes,
+      "run": {
+          "max_steps": 8,
+          "disable_language_model": True,
+          "api_type": "openai",
+          "model_name": "gpt-4o",
+          "api_key": None,
+          "checkpoint_every_step": True,
+      },
+  }
+
+
+def validate_draft(draft: dict[str, Any]) -> None:
+  contestants = draft.get("contestants", [])
+  if len(contestants) != 2:
+    raise DraftValidationError("Draft must contain exactly 2 candidates.")
+  genders = sorted(_candidate_gender(item) for item in contestants)
+  if genders != ["man", "woman"]:
+    raise DraftValidationError("Draft must contain exactly 1 man and 1 woman.")
+  names = {item.get("name") for item in contestants}
+  if len(names) != 2 or None in names:
+    raise DraftValidationError("Draft candidates must have unique names.")
+  for scene in draft.get("scenes", []):
+    participants = set(scene.get("participants", []))
+    if not participants.issubset(names):
+      raise DraftValidationError(
+          f"Scene {scene.get('id', '<unnamed>')} contains non-selected players."
+      )
+
+
+def save_draft(
+    draft: dict[str, Any],
+    name: str | None = None,
+    paths: StarterPaths = StarterPaths(),
+) -> Path:
+  validate_draft(draft)
+  clean_name = _safe_name(name or draft.get("name") or "draft")
+  draft = copy.deepcopy(draft)
+  draft["name"] = clean_name
+  draft["updated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+  path = paths.drafts_dir / f"{clean_name}.json"
+  write_json(path, draft)
+  return path
+
+
+def list_drafts(paths: StarterPaths = StarterPaths()) -> list[dict[str, Any]]:
+  if not paths.drafts_dir.exists():
+    return []
+  drafts = []
+  for path in sorted(paths.drafts_dir.glob("*.json")):
+    try:
+      payload = load_json(path)
+    except json.JSONDecodeError:
+      continue
+    drafts.append({
+        "name": path.stem,
+        "path": str(path),
+        "updated_at": payload.get("updated_at"),
+        "candidates": [item.get("name") for item in payload.get("contestants", [])],
+      })
+  return drafts
+
+
+def load_draft(name: str, paths: StarterPaths = StarterPaths()) -> dict[str, Any]:
+  return load_json(paths.drafts_dir / f"{_safe_name(name)}.json")
+
+
+def _safe_name(name: str) -> str:
+  return "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in name)
+
+
+def deterministic_embedder(text: str):
+  del text
+  try:
+    import numpy as np  # pylint: disable=import-outside-toplevel
+
+    return np.zeros(16, dtype=np.float32)
+  except ImportError:
+    return [0.0] * 16
+
+
+def build_scene_specs(draft: dict[str, Any], gm_name: str) -> list[scene_lib.SceneSpec]:
+  scene_types_cfg = draft["scene_types"]
+  scene_type_specs: dict[str, scene_lib.SceneTypeSpec] = {}
+  for scene_type_name, cfg in scene_types_cfg.items():
+    scene_type_specs[scene_type_name] = scene_lib.SceneTypeSpec(
+        name=scene_type_name,
+        game_master_name=gm_name,
+        action_spec=entity_lib.free_action_spec(
+            call_to_action=cfg["call_to_action"]
+        ),
+    )
+
+  specs = []
+  for item in draft["scenes"]:
+    scene_type_name = item["type"]
+    specs.append(
+        scene_lib.SceneSpec(
+            scene_type=scene_type_specs[scene_type_name],
+            participants=item["participants"],
+            num_rounds=item.get(
+                "num_rounds", scene_types_cfg[scene_type_name]["rounds"]
+            ),
+            premise=item.get("premise"),
+        )
+    )
+  return specs
+
+
+def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
+  validate_draft(draft)
+  contestants = draft["contestants"]
+  player_names = [item["name"] for item in contestants]
+  gm_name = draft["scene_defaults"].get("main_game_master_name", "Show Runner")
+  source_root = Path(draft.get("source_root", STARTER_ROOT))
+  shared_memories = (
+      load_json(StarterPaths(source_root).persona_bundle_json)
+      .get("show", {})
+      .get("shared_memories", [])
+  )
+
+  instances: list[prefab_lib.InstanceConfig] = []
+  for contestant in contestants:
+    instances.append(
+        prefab_lib.InstanceConfig(
+            prefab=contestant.get("prefab", "basic__Entity"),
+            role=prefab_lib.Role.ENTITY,
+            params=copy.deepcopy(contestant["entity_params"]),
+        )
+    )
+
+  instances.append(
+      prefab_lib.InstanceConfig(
+          prefab="formative_memories_initializer__GameMaster",
+          role=prefab_lib.Role.INITIALIZER,
+          params={
+              "name": "Backstory Initializer",
+              "next_game_master_name": gm_name,
+              "shared_memories": shared_memories,
+              "player_specific_context": {
+                  item["name"]: item.get("player_specific_context", "")
+                  for item in contestants
+              },
+              "player_specific_memories": {
+                  item["name"]: item.get("player_specific_memories", [])
+                  for item in contestants
+              },
+          },
+      )
+  )
+  instances.append(
+      prefab_lib.InstanceConfig(
+          prefab="dialogic_and_dramaturgic__GameMaster",
+          role=prefab_lib.Role.GAME_MASTER,
+          params={
+              "name": gm_name,
+              "scenes": build_scene_specs(draft, gm_name),
+              "allow_llm_fallback": False,
+          },
+      )
+  )
+  return prefab_lib.Config(
+      prefabs={
+          "basic__Entity": entity_prefabs.basic.Entity(),
+          "basic_with_plan__Entity": entity_prefabs.basic_with_plan.Entity(),
+          "conversational__Entity": entity_prefabs.conversational.Entity(),
+          "dialogic_and_dramaturgic__GameMaster": (
+              game_master_prefabs.dialogic_and_dramaturgic.GameMaster()
+          ),
+          "formative_memories_initializer__GameMaster": (
+              formative_memories_initializer.GameMaster()
+          ),
+      },
+      instances=instances,
+      default_premise=draft["scene_defaults"]["default_premise"],
+      default_max_steps=int(draft["run"].get("max_steps") or 8),
+  )
+
+
+def snapshot_for_run(draft: dict[str, Any], run_id: str) -> dict[str, Any]:
+  snapshot = copy.deepcopy(draft)
+  snapshot["run_id"] = run_id
+  snapshot["snapshot_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+  validate_draft(snapshot)
+  return snapshot

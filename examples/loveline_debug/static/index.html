@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loveline Concordia Debug</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #64748b;
+      --line: #d7dee8;
+      --panel: #f8fafc;
+      --accent: #0f766e;
+      --warn: #a16207;
+      --bad: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: white;
+    }
+    header {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    h1 { font-size: 18px; margin: 0; }
+    h2 { font-size: 14px; margin: 0 0 10px; }
+    main {
+      height: calc(100vh - 58px);
+      display: grid;
+      grid-template-columns: 300px minmax(420px, 1fr) 360px;
+      overflow: hidden;
+    }
+    section {
+      padding: 14px;
+      overflow: auto;
+      border-right: 1px solid var(--line);
+    }
+    section:last-child { border-right: 0; }
+    .band {
+      padding: 10px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-weight: 650;
+      margin: 10px 0 5px;
+    }
+    select, input, textarea, button {
+      font: inherit;
+    }
+    select, input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 7px 8px;
+      background: white;
+      color: var(--ink);
+    }
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .row > * { flex: 1; }
+    button {
+      border: 1px solid #0f766e;
+      background: var(--accent);
+      color: white;
+      border-radius: 5px;
+      padding: 7px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.secondary {
+      color: var(--ink);
+      background: white;
+      border-color: var(--line);
+    }
+    button.warn {
+      background: var(--warn);
+      border-color: var(--warn);
+    }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .tabs button {
+      background: white;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    .tabs button.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .pill {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: var(--muted);
+      margin: 2px 4px 2px 0;
+      font-size: 12px;
+    }
+    .status {
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 140px;
+    }
+    .error { color: var(--bad); font-weight: 650; }
+    .muted { color: var(--muted); }
+    ul { padding-left: 18px; }
+    a { color: #0f766e; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Loveline Concordia Debug</h1>
+    <div class="row" style="max-width: 520px">
+      <input id="draftName" value="two_candidate_debug" aria-label="Draft name">
+      <button id="saveDraft">Save Draft</button>
+      <button id="runDraft" class="warn">Run</button>
+    </div>
+  </header>
+  <main>
+    <section>
+      <div class="band">
+        <h2>Config</h2>
+        <div id="sourceRoot" class="muted"></div>
+        <label for="loadDraft">Saved Draft</label>
+        <div class="row">
+          <select id="loadDraft"></select>
+          <button id="loadDraftBtn" class="secondary">Load</button>
+        </div>
+      </div>
+      <div class="band">
+        <h2>Candidates</h2>
+        <label for="maleCandidate">Male</label>
+        <select id="maleCandidate"></select>
+        <label for="femaleCandidate">Female</label>
+        <select id="femaleCandidate"></select>
+        <button id="applySelection" class="secondary" style="margin-top:10px">Apply Pair</button>
+        <div id="candidateTags" style="margin-top:10px"></div>
+      </div>
+      <div class="band">
+        <h2>Run Settings</h2>
+        <label for="maxSteps">Max Steps</label>
+        <input id="maxSteps" type="number" min="1" max="100">
+        <label>
+          <input id="disableLm" type="checkbox" style="width:auto">
+          Disable language model
+        </label>
+        <label for="apiType">API Type</label>
+        <input id="apiType">
+        <label for="modelName">Model</label>
+        <input id="modelName">
+      </div>
+    </section>
+    <section>
+      <div class="tabs">
+        <button data-tab="contestants" class="active">Candidates</button>
+        <button data-tab="scenes">Scenes</button>
+        <button data-tab="snapshot">Snapshot</button>
+      </div>
+      <div id="tabContestants">
+        <h2>Editable Candidate Payload</h2>
+        <textarea id="contestantsJson"></textarea>
+      </div>
+      <div id="tabScenes" style="display:none">
+        <h2>Editable Scenes Payload</h2>
+        <textarea id="scenesJson"></textarea>
+      </div>
+      <div id="tabSnapshot" style="display:none">
+        <h2>Full Draft Snapshot</h2>
+        <textarea id="snapshotJson"></textarea>
+      </div>
+    </section>
+    <section>
+      <div class="band">
+        <h2>Run Control</h2>
+        <div class="row">
+          <button data-command="play" class="secondary">Play</button>
+          <button data-command="pause" class="secondary">Pause</button>
+          <button data-command="step" class="secondary">Step</button>
+          <button data-command="stop" class="secondary">Stop</button>
+        </div>
+      </div>
+      <div class="band">
+        <h2>Status</h2>
+        <div id="message" class="muted"></div>
+        <pre id="status" class="status"></pre>
+      </div>
+      <div class="band">
+        <h2>Recent Runs</h2>
+        <ul id="recentRuns"></ul>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
