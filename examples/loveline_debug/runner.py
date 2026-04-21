@@ -125,11 +125,19 @@ class RunManager:
       manifest = path / "manifest.json"
       if manifest.exists():
         try:
-          runs.append(json.loads(manifest.read_text(encoding="utf-8")))
+          runs.append(
+              _enrich_run_manifest(
+                  path, json.loads(manifest.read_text(encoding="utf-8"))
+              )
+          )
           continue
         except json.JSONDecodeError:
           pass
-      runs.append({"run_id": path.name, "run_dir": str(path)})
+      runs.append(
+          _enrich_run_manifest(
+              path, {"run_id": path.name, "run_dir": str(path)}
+          )
+      )
     return runs[:20]
 
   def _run_thread(
@@ -300,6 +308,40 @@ def _json_safe(value: Any, seen: set[int] | None = None) -> Any:
       seen.remove(value_id)
 
   return repr(value)
+
+
+def _enrich_run_manifest(run_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+  """Adds artifact and config metadata from files already in the run directory."""
+  enriched = dict(manifest)
+  artifacts = dict(enriched.get("artifacts") or {})
+  for key, filename in (
+      ("config_snapshot", "config_snapshot.json"),
+      ("structured_log", "structured_log.json"),
+      ("html_log", "log.html"),
+      ("config_visualization", "config_visualization.html"),
+      ("status", "status.json"),
+  ):
+    path = run_dir / filename
+    if path.exists() and key not in artifacts:
+      artifacts[key] = str(path)
+  if artifacts:
+    enriched["artifacts"] = artifacts
+
+  snapshot_path = run_dir / "config_snapshot.json"
+  if snapshot_path.exists() and "summary" not in enriched:
+    try:
+      snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+      snapshot = {}
+    contestants = snapshot.get("contestants") or []
+    run = snapshot.get("run") or {}
+    enriched["summary"] = {
+        "candidates": [item.get("name") for item in contestants],
+        "max_steps": run.get("max_steps"),
+        "model": run.get("model_name"),
+        "snapshot_at": snapshot.get("snapshot_at"),
+    }
+  return enriched
 
 
 def _install_json_safe_checkpointing(sim: Any) -> None:

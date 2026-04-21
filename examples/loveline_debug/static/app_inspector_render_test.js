@@ -1,6 +1,6 @@
 const assert = require("assert/strict");
 
-const {renderTurnDetail} = require("./app.js");
+const {renderCompareSide, renderTurnDetail} = require("./app.js");
 
 function testRenderTurnDetailShowsDebugFields() {
   const html = renderTurnDetail(
@@ -35,4 +35,31 @@ function testRenderTurnDetailShowsDebugFields() {
 }
 
 testRenderTurnDetailShowsDebugFields();
+
+function testRenderCompareSideShowsFirstTurnAndTranscript() {
+  const html = renderCompareSide("Left", {
+    run_id: "run_1",
+    config: {
+      candidates: ["Alex", "Blake"],
+      scene_count: 1,
+      max_steps: 8,
+      disable_language_model: true,
+    },
+    first_turn: {
+      step: 1,
+      entity_name: "Alex",
+      action: "I am ready.",
+      observations: ["Blake enters the pod."],
+      components: [{name: "Goal", value: "Find a match."}],
+    },
+    transcript: [{step: 1, acting_entity: "Alex", action: "I am ready."}],
+  });
+
+  assert.match(html, /Alex vs Blake/);
+  assert.match(html, /First Action/);
+  assert.match(html, /I am ready/);
+  assert.match(html, /Transcript/);
+}
+
+testRenderCompareSideShowsFirstTurnAndTranscript();
 console.log("app_inspector_render_test passed");

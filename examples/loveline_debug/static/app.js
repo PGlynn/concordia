@@ -3,6 +3,7 @@ let draft = null;
 let activeTab = "config";
 let latestStatus = null;
 let inspectorState = null;
+let compareState = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -406,21 +407,8 @@ async function refreshStatus() {
     active: payload.active || {status: "idle"},
     control: payload.control || null,
   });
-  $("recentRuns").innerHTML = payload.recent_runs.map((run) => {
-    const id = run.run_id;
-    const links = run.artifacts || {};
-    const rel = (path) => path ? path.split("/runs/").pop() : null;
-    const html = rel(links.html_log);
-    const json = rel(links.structured_log);
-    const cfg = rel(links.config_snapshot);
-    return `<li><strong>${escapeHtml(id)}</strong> ${escapeHtml(run.status || "")}
-      <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Inspect</button>
-      ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
-      ${json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">json</a>` : ""}
-      ${cfg ? `<a href="/artifacts/${escapeHtml(cfg)}" target="_blank">config</a>` : ""}
-    </li>`;
-  }).join("");
-  if (!inspectorState && payload.recent_runs.length) {
+  renderRecentRuns(payload.recent_runs || []);
+  if (!inspectorState && (payload.recent_runs || []).length) {
     const run = payload.recent_runs.find((item) => item.artifacts?.structured_log);
     if (run) loadInspector(run.run_id).catch((error) => setInspectorMessage(error.message, true));
   }
@@ -462,6 +450,66 @@ function updateControlButtons(payload = latestStatus) {
 function setInspectorMessage(text, isError = false) {
   $("inspectorMessage").textContent = text;
   $("inspectorMessage").className = isError ? "error" : "muted";
+}
+
+function setCompareMessage(text, isError = false) {
+  $("compareMessage").textContent = text;
+  $("compareMessage").className = isError ? "error" : "muted";
+}
+
+function artifactRel(path) {
+  return path ? path.split("/runs/").pop() : null;
+}
+
+function renderRecentRuns(runs) {
+  if (!runs.length) {
+    $("recentRuns").innerHTML = '<li class="muted">No runs yet.</li>';
+    renderCompareOptions(runs);
+    return;
+  }
+  $("recentRuns").innerHTML = runs.map((run) => {
+    const id = run.run_id;
+    const links = run.artifacts || {};
+    const html = artifactRel(links.html_log);
+    const json = artifactRel(links.structured_log);
+    const cfg = artifactRel(links.config_snapshot);
+    const summary = run.summary || {};
+    const candidates = (summary.candidates || []).filter(Boolean).join(" vs ");
+    const meta = [
+      run.status || "unknown",
+      run.finished_at || run.started_at || summary.snapshot_at || "",
+      candidates,
+      summary.max_steps ? `${summary.max_steps} steps` : "",
+    ].filter(Boolean).join(" | ");
+    return `<li class="run-item">
+      <div><strong>${escapeHtml(id)}</strong><div class="muted">${escapeHtml(meta)}</div></div>
+      <div class="run-actions">
+        <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Inspect</button>
+        <button class="secondary small" data-compare-left="${escapeHtml(id)}" type="button">Left</button>
+        <button class="secondary small" data-compare-right="${escapeHtml(id)}" type="button">Right</button>
+        ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
+        ${json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">json</a>` : ""}
+        ${cfg ? `<a href="/artifacts/${escapeHtml(cfg)}" target="_blank">config</a>` : ""}
+      </div>
+    </li>`;
+  }).join("");
+  renderCompareOptions(runs);
+}
+
+function renderCompareOptions(runs) {
+  const options = runs.map((run) =>
+    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id)}</option>`
+  ).join("");
+  const previousLeft = $("compareLeft").value;
+  const previousRight = $("compareRight").value;
+  $("compareLeft").innerHTML = options;
+  $("compareRight").innerHTML = options;
+  if (runs.some((run) => run.run_id === previousLeft)) $("compareLeft").value = previousLeft;
+  if (runs.some((run) => run.run_id === previousRight)) $("compareRight").value = previousRight;
+  if (!$("compareLeft").value && runs[0]) $("compareLeft").value = runs[0].run_id;
+  if ((!$("compareRight").value || $("compareRight").value === $("compareLeft").value) && runs[1]) {
+    $("compareRight").value = runs[1].run_id;
+  }
 }
 
 async function loadInspector(runId, selection = {}) {
@@ -545,6 +593,61 @@ function renderTurnDetail(turn, state = inspectorState) {
   ${renderGmEntries(turn.game_master_entries)}
   ${renderListBlock("Game Master Memories", turn.game_master_memories)}
   <details><summary>Raw Entry</summary><pre>${escapeHtml(displayValue(turn.raw_entry))}</pre></details>`;
+}
+
+async function loadCompare(leftRunId, rightRunId) {
+  if (!leftRunId || !rightRunId) throw new Error("Choose two runs to compare.");
+  if (leftRunId === rightRunId) throw new Error("Choose two different runs.");
+  const params = new URLSearchParams({left: leftRunId, right: rightRunId});
+  compareState = await api(`/api/compare?${params.toString()}`);
+  renderCompare();
+}
+
+function renderCompare() {
+  if (!compareState) return;
+  setCompareMessage("");
+  $("compareOutput").innerHTML = `
+    <div class="compare-diffs">${renderCompareDiffs(compareState.diffs || [])}</div>
+    <div class="compare-grid">
+      ${renderCompareSide("Left", compareState.left)}
+      ${renderCompareSide("Right", compareState.right)}
+    </div>`;
+}
+
+function renderCompareDiffs(diffs) {
+  if (!diffs.length) {
+    return '<div class="muted">No first-turn differences detected in the compared fields.</div>';
+  }
+  return `<h3>Changed Fields</h3><dl class="status-grid">${diffs.map((diff) =>
+    `<dt>${escapeHtml(diff.label)}</dt><dd>${escapeHtml(displayValue(diff.left))}<br><span class="muted">vs</span><br>${escapeHtml(displayValue(diff.right))}</dd>`
+  ).join("")}</dl>`;
+}
+
+function renderCompareSide(label, side) {
+  const turn = side?.first_turn;
+  const config = side?.config || {};
+  const transcript = side?.transcript || [];
+  const meta = [
+    ["Run", side?.run_id || ""],
+    ["Candidates", (config.candidates || []).filter(Boolean).join(" vs ")],
+    ["Scenes", config.scene_count ?? ""],
+    ["Max Steps", config.max_steps ?? ""],
+    ["Model", config.disable_language_model ? "disabled" : config.model],
+    ["First Actor", turn?.entity_name || ""],
+    ["First Step", turn?.step ?? ""],
+  ];
+  return `<div class="compare-side">
+    <h3>${escapeHtml(label)}</h3>
+    <dl class="status-grid compact">${meta.map(([key, value]) =>
+      `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
+    ).join("")}</dl>
+    ${turn ? renderTextBlock("First Action", turn.action) : '<div class="muted">No structured first turn.</div>'}
+    ${turn ? renderListBlock("Observations", turn.observations) : ""}
+    ${turn ? renderComponentRows(turn.components) : ""}
+    ${transcript.length ? renderTextBlock("Transcript", transcript.map((item) =>
+      `Step ${item.step}: ${item.acting_entity || ""} ${item.action || ""}`
+    ).join("\n")) : ""}
+  </div>`;
 }
 
 async function init() {
@@ -708,6 +811,16 @@ if (typeof document !== "undefined") {
         .catch((error) => setInspectorMessage(error.message, true));
       return;
     }
+    const compareLeft = event.target.closest("[data-compare-left]");
+    if (compareLeft) {
+      $("compareLeft").value = compareLeft.dataset.compareLeft;
+      return;
+    }
+    const compareRight = event.target.closest("[data-compare-right]");
+    if (compareRight) {
+      $("compareRight").value = compareRight.dataset.compareRight;
+      return;
+    }
     const removeType = event.target.closest("[data-remove-type]");
     const removeScene = event.target.closest("[data-remove-scene]");
     if (!removeType && !removeScene) return;
@@ -755,6 +868,14 @@ if (typeof document !== "undefined") {
     }
   });
 
+  $("loadCompare").addEventListener("click", async () => {
+    try {
+      await loadCompare($("compareLeft").value, $("compareRight").value);
+    } catch (error) {
+      setCompareMessage(error.message, true);
+    }
+  });
+
   init().catch((error) => setMessage(error.message, true));
 }
 
@@ -763,6 +884,7 @@ if (typeof module !== "undefined") {
     displayValue,
     mergeSelectionDraft,
     remapSceneForSelection,
+    renderCompareSide,
     renderTurnDetail,
   };
 }

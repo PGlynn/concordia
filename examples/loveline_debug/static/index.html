@@ -186,6 +186,35 @@
       max-height: 260px;
       overflow: auto;
     }
+    .run-item {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .run-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .compare-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .compare-side {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: white;
+      padding: 10px;
+    }
+    .compare-diffs {
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+      margin-top: 10px;
+    }
     .error { color: var(--bad); font-weight: 650; }
     .muted { color: var(--muted); overflow-wrap: anywhere; }
     ul { padding-left: 18px; }
@@ -193,7 +222,7 @@
     @media (max-width: 1050px) {
       main { grid-template-columns: 1fr; height: auto; overflow: visible; }
       section { border-right: 0; border-bottom: 1px solid var(--line); }
-      .grid.two, .grid.scene-grid, .grid.type-grid { grid-template-columns: 1fr; }
+      .grid.two, .grid.scene-grid, .grid.type-grid, .compare-grid { grid-template-columns: 1fr; }
       header { align-items: stretch; flex-direction: column; gap: 10px; }
     }
   </style>
@@ -324,6 +353,16 @@
       <div class="band">
         <h2>Recent Runs</h2>
         <ul id="recentRuns"></ul>
+      </div>
+      <div class="band">
+        <h2>First-Turn Compare</h2>
+        <div id="compareMessage" class="muted"></div>
+        <div class="row">
+          <select id="compareLeft" aria-label="Left run"></select>
+          <select id="compareRight" aria-label="Right run"></select>
+          <button id="loadCompare" class="secondary" type="button">Compare</button>
+        </div>
+        <div id="compareOutput"></div>
       </div>
       <div class="band">
         <h2>Turn Inspector</h2>

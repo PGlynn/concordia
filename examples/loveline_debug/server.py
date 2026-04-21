@@ -55,6 +55,8 @@ class LovelineDebugApp:
             self._send_json(app.runs.status())
           elif parsed.path == "/api/runs":
             self._send_json(app.runs.list_runs())
+          elif parsed.path == "/api/compare":
+            self._send_json(self._compare_runs(parsed))
           elif parsed.path.startswith("/api/inspect/"):
             self._send_json(self._inspect_run(parsed))
           elif parsed.path.startswith("/artifacts/"):
@@ -119,10 +121,7 @@ class LovelineDebugApp:
 
       def _inspect_run(self, parsed: parse.ParseResult) -> dict[str, Any]:
         run_id = parsed.path.removeprefix("/api/inspect/")
-        run_dir = (app.paths.runs_dir / run_id).resolve()
-        runs_root = app.paths.runs_dir.resolve()
-        if runs_root not in run_dir.parents and run_dir != runs_root:
-          raise ValueError("Run path is outside the Loveline runs directory.")
+        run_dir = self._run_dir(run_id)
         query = parse.parse_qs(parsed.query)
         if "step" not in query:
           return inspector.json_safe(inspector.load_run_inspector(run_dir))
@@ -137,6 +136,26 @@ class LovelineDebugApp:
                 index=index,
             )
         )
+
+      def _compare_runs(self, parsed: parse.ParseResult) -> dict[str, Any]:
+        query = parse.parse_qs(parsed.query)
+        left = query.get("left", [""])[0]
+        right = query.get("right", [""])[0]
+        if not left or not right:
+          raise ValueError("Both left and right run ids are required.")
+        return inspector.json_safe(
+            inspector.load_first_turn_compare(
+                self._run_dir(left),
+                self._run_dir(right),
+            )
+        )
+
+      def _run_dir(self, run_id: str) -> Path:
+        run_dir = (app.paths.runs_dir / run_id).resolve()
+        runs_root = app.paths.runs_dir.resolve()
+        if runs_root not in run_dir.parents and run_dir != runs_root:
+          raise ValueError("Run path is outside the Loveline runs directory.")
+        return run_dir
 
     return Handler
 
