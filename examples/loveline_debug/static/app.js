@@ -42,6 +42,62 @@ function textFromLines(value) {
   return Array.isArray(value) ? value.join("\n") : String(value || "");
 }
 
+function uniqueLines(...values) {
+  const result = [];
+  values.flat().forEach((value) => {
+    if (value && !result.includes(value)) result.push(value);
+  });
+  return result;
+}
+
+function remapName(value, nameMap) {
+  return nameMap.get(value) || value;
+}
+
+function remapSceneForSelection(scene, nameMap, selectedNamesSet) {
+  const next = {...scene};
+  next.participants = (scene.participants || [])
+    .map((name) => remapName(name, nameMap))
+    .filter((name, index, names) => selectedNamesSet.has(name) && names.indexOf(name) === index);
+  const premise = {};
+  Object.entries(scene.premise || {}).forEach(([name, lines]) => {
+    const nextName = remapName(name, nameMap);
+    if (!selectedNamesSet.has(nextName)) return;
+    premise[nextName] = uniqueLines(premise[nextName] || [], Array.isArray(lines) ? lines : [String(lines)]);
+  });
+  next.premise = premise;
+  return next;
+}
+
+function mergeSelectionDraft(currentDraft, selectionDraft) {
+  const currentById = new Map((currentDraft.contestants || []).map((item) => [item.id, item]));
+  const currentByGender = new Map((currentDraft.contestants || []).map((item) => [item.gender, item]));
+  const nextContestants = (selectionDraft.contestants || []).map((candidate) => {
+    const edited = currentById.get(candidate.id);
+    return edited ? {...candidate, ...edited} : candidate;
+  });
+  const nextByGender = new Map(nextContestants.map((item) => [item.gender, item]));
+  const nameMap = new Map();
+  currentByGender.forEach((oldCandidate, gender) => {
+    const nextCandidate = nextByGender.get(gender);
+    if (oldCandidate?.name && nextCandidate?.name) {
+      nameMap.set(oldCandidate.name, nextCandidate.name);
+    }
+  });
+  const selectedNamesSet = new Set(nextContestants.map((item) => item.name).filter(Boolean));
+  const currentScenes = currentDraft.scenes || [];
+  const nextScenes = currentScenes.length
+    ? currentScenes.map((scene) => remapSceneForSelection(scene, nameMap, selectedNamesSet))
+    : (selectionDraft.scenes || []);
+  return {
+    ...selectionDraft,
+    ...currentDraft,
+    selected_candidate_ids: selectionDraft.selected_candidate_ids,
+    contestants: nextContestants,
+    scenes: nextScenes,
+  };
+}
+
 function parseJsonField(id, fallback) {
   const element = $(id);
   if (!element) return fallback;
@@ -359,170 +415,180 @@ async function init() {
   setInterval(refreshStatus, 2000);
 }
 
-document.querySelectorAll(".tabs button").forEach((button) => {
-  button.addEventListener("click", () => {
+if (typeof document !== "undefined") {
+  document.querySelectorAll(".tabs button").forEach((button) => {
+    button.addEventListener("click", () => {
+      try {
+        collectDraft();
+        activeTab = button.dataset.tab;
+        document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
+        button.classList.add("active");
+        document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
+          panel.style.display = panel.dataset.tabPanel === activeTab ? "" : "none";
+        });
+        hydrateInputs();
+        setMessage("");
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    });
+  });
+
+  $("applySelection").addEventListener("click", async () => {
     try {
-      collectDraft();
-      activeTab = button.dataset.tab;
-      document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
-      button.classList.add("active");
-      document.querySelectorAll("[data-tab-panel]").forEach((panel) => {
-        panel.style.display = panel.dataset.tabPanel === activeTab ? "" : "none";
-      });
+      const currentDraft = collectDraft();
+      const ids = [$("maleCandidate").value, $("femaleCandidate").value].join(",");
+      const selectionDraft = await api(`/api/draft/selection?ids=${encodeURIComponent(ids)}`);
+      draft = mergeSelectionDraft(currentDraft, selectionDraft);
       hydrateInputs();
-      setMessage("");
+      setMessage("Pair applied.");
     } catch (error) {
       setMessage(error.message, true);
     }
   });
-});
 
-$("applySelection").addEventListener("click", async () => {
-  try {
-    const ids = [$("maleCandidate").value, $("femaleCandidate").value].join(",");
-    draft = await api(`/api/draft/selection?ids=${encodeURIComponent(ids)}`);
-    draft.name = $("draftName").value || draft.name;
-    hydrateInputs();
-    setMessage("Pair applied.");
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("saveDraft").addEventListener("click", async () => {
-  try {
-    const payload = await api("/api/draft", {
-      method: "POST",
-      body: JSON.stringify({name: $("draftName").value, draft: collectDraft()}),
-    });
-    await refreshDrafts();
-    hydrateInputs();
-    setMessage(`Saved ${payload.path}`);
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("loadDraftBtn").addEventListener("click", async () => {
-  try {
-    draft = await api(`/api/draft?name=${encodeURIComponent($("loadDraft").value)}`);
-    hydrateInputs();
-    setMessage("Draft loaded.");
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("runDraft").addEventListener("click", async () => {
-  try {
-    const record = await api("/api/run", {
-      method: "POST",
-      body: JSON.stringify({draft: collectDraft()}),
-    });
-    setMessage(`Started ${record.run_id}. Runs start paused; use Play or Step.`);
-    await refreshStatus();
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("applyConfigJson").addEventListener("click", () => {
-  try {
-    const raw = JSON.parse($("configRawJson").value);
-    draft = {
-      ...draft,
-      schema_version: raw.schema_version ?? draft.schema_version,
-      name: raw.name || draft.name,
-      created_at: raw.created_at ?? draft.created_at,
-      updated_at: raw.updated_at ?? draft.updated_at,
-      source_root: raw.source_root ?? draft.source_root,
-      selected_candidate_ids: raw.selected_candidate_ids ?? draft.selected_candidate_ids,
-      run: raw.run ?? draft.run,
-      scene_defaults: raw.scene_defaults ?? draft.scene_defaults,
-    };
-    hydrateInputs();
-    setMessage("Config JSON applied.");
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("applyContestantsJson").addEventListener("click", () => {
-  try {
-    draft.contestants = JSON.parse($("contestantsJson").value);
-    hydrateInputs();
-    setMessage("Candidates JSON applied.");
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("applyScenesJson").addEventListener("click", () => {
-  try {
-    const raw = JSON.parse($("scenesJson").value);
-    draft.scene_defaults = raw.scene_defaults;
-    draft.scene_types = raw.scene_types;
-    draft.scenes = raw.scenes;
-    hydrateInputs();
-    setMessage("Scenes JSON applied.");
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("addSceneType").addEventListener("click", () => {
-  try {
-    collectDraft();
-    let index = Object.keys(draft.scene_types || {}).length + 1;
-    let name = `scene_type_${index}`;
-    while (draft.scene_types[name]) name = `scene_type_${++index}`;
-    draft.scene_types[name] = {rounds: 1, call_to_action: ""};
-    hydrateInputs();
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-$("addScene").addEventListener("click", () => {
-  try {
-    collectDraft();
-    const names = selectedNames();
-    const type = Object.keys(draft.scene_types || {})[0] || "pod_date";
-    draft.scenes.push({
-      id: `scene_${draft.scenes.length + 1}`,
-      type,
-      participants: names,
-      premise: Object.fromEntries(names.map((name) => [name, []])),
-    });
-    hydrateInputs();
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-document.addEventListener("click", (event) => {
-  const removeType = event.target.closest("[data-remove-type]");
-  const removeScene = event.target.closest("[data-remove-scene]");
-  if (!removeType && !removeScene) return;
-  try {
-    collectDraft();
-    if (removeType) delete draft.scene_types[removeType.dataset.removeType];
-    if (removeScene) draft.scenes.splice(Number(removeScene.dataset.removeScene), 1);
-    hydrateInputs();
-  } catch (error) {
-    setMessage(error.message, true);
-  }
-});
-
-document.querySelectorAll("[data-command]").forEach((button) => {
-  button.addEventListener("click", async () => {
+  $("saveDraft").addEventListener("click", async () => {
     try {
-      await api(`/api/control/${button.dataset.command}`, {method: "POST", body: "{}"});
+      const payload = await api("/api/draft", {
+        method: "POST",
+        body: JSON.stringify({name: $("draftName").value, draft: collectDraft()}),
+      });
+      await refreshDrafts();
+      hydrateInputs();
+      setMessage(`Saved ${payload.path}`);
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("loadDraftBtn").addEventListener("click", async () => {
+    try {
+      draft = await api(`/api/draft?name=${encodeURIComponent($("loadDraft").value)}`);
+      hydrateInputs();
+      setMessage("Draft loaded.");
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("runDraft").addEventListener("click", async () => {
+    try {
+      const record = await api("/api/run", {
+        method: "POST",
+        body: JSON.stringify({draft: collectDraft()}),
+      });
+      setMessage(`Started ${record.run_id}. Runs start paused; use Play or Step.`);
       await refreshStatus();
     } catch (error) {
       setMessage(error.message, true);
     }
   });
-});
 
-init().catch((error) => setMessage(error.message, true));
+  $("applyConfigJson").addEventListener("click", () => {
+    try {
+      const raw = JSON.parse($("configRawJson").value);
+      draft = {
+        ...draft,
+        schema_version: raw.schema_version ?? draft.schema_version,
+        name: raw.name || draft.name,
+        created_at: raw.created_at ?? draft.created_at,
+        updated_at: raw.updated_at ?? draft.updated_at,
+        source_root: raw.source_root ?? draft.source_root,
+        selected_candidate_ids: raw.selected_candidate_ids ?? draft.selected_candidate_ids,
+        run: raw.run ?? draft.run,
+        scene_defaults: raw.scene_defaults ?? draft.scene_defaults,
+      };
+      hydrateInputs();
+      setMessage("Config JSON applied.");
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("applyContestantsJson").addEventListener("click", () => {
+    try {
+      draft.contestants = JSON.parse($("contestantsJson").value);
+      hydrateInputs();
+      setMessage("Candidates JSON applied.");
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("applyScenesJson").addEventListener("click", () => {
+    try {
+      const raw = JSON.parse($("scenesJson").value);
+      draft.scene_defaults = raw.scene_defaults;
+      draft.scene_types = raw.scene_types;
+      draft.scenes = raw.scenes;
+      hydrateInputs();
+      setMessage("Scenes JSON applied.");
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("addSceneType").addEventListener("click", () => {
+    try {
+      collectDraft();
+      let index = Object.keys(draft.scene_types || {}).length + 1;
+      let name = `scene_type_${index}`;
+      while (draft.scene_types[name]) name = `scene_type_${++index}`;
+      draft.scene_types[name] = {rounds: 1, call_to_action: ""};
+      hydrateInputs();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("addScene").addEventListener("click", () => {
+    try {
+      collectDraft();
+      const names = selectedNames();
+      const type = Object.keys(draft.scene_types || {})[0] || "pod_date";
+      draft.scenes.push({
+        id: `scene_${draft.scenes.length + 1}`,
+        type,
+        participants: names,
+        premise: Object.fromEntries(names.map((name) => [name, []])),
+      });
+      hydrateInputs();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const removeType = event.target.closest("[data-remove-type]");
+    const removeScene = event.target.closest("[data-remove-scene]");
+    if (!removeType && !removeScene) return;
+    try {
+      collectDraft();
+      if (removeType) delete draft.scene_types[removeType.dataset.removeType];
+      if (removeScene) draft.scenes.splice(Number(removeScene.dataset.removeScene), 1);
+      hydrateInputs();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  document.querySelectorAll("[data-command]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await api(`/api/control/${button.dataset.command}`, {method: "POST", body: "{}"});
+        await refreshStatus();
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    });
+  });
+
+  init().catch((error) => setMessage(error.message, true));
+}
+
+if (typeof module !== "undefined") {
+  module.exports = {
+    mergeSelectionDraft,
+    remapSceneForSelection,
+  };
+}
