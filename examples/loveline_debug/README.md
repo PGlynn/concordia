@@ -21,7 +21,9 @@ Drafts and run artifacts are written back under:
 - Exactly 2 candidates per draft: 1 man and 1 woman.
 - Candidate selection from the existing `personas/personas.yaml` and generated
   `generated/persona_bundle.json` source.
-- Browser editing for candidate payload, scene payload, and run settings.
+- Browser form editing for draft metadata, pair selection, run settings,
+  candidates, scene defaults, scene types, and scene list entries. Raw JSON
+  views remain available for exact draft inspection and targeted payload edits.
 - Save/load of draft JSON snapshots.
 - Baseline runs through stock Concordia:
   - `concordia.prefabs.entity.basic.Entity`
@@ -86,4 +88,3 @@ generated/loveline_debug/drafts/<draft_name>.json
   directly from recent runs.
 - Compare: diff two `config_snapshot.json` files and two structured logs by
   entity action timeline using `concordia_log.py`/`structured_logging`.
-
