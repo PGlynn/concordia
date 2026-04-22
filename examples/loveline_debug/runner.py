@@ -30,6 +30,7 @@ class RunRecord:
   error: str | None = None
   current_step: int = 0
   start_paused: bool = True
+  summary: dict[str, Any] = dataclasses.field(default_factory=dict)
   transcript: list[dict[str, Any]] = dataclasses.field(default_factory=list)
   artifacts: dict[str, str] = dataclasses.field(default_factory=dict)
 
@@ -43,6 +44,7 @@ class RunRecord:
         "error": self.error,
         "current_step": self.current_step,
         "start_paused": self.start_paused,
+        "summary": _json_safe(self.summary),
         "transcript": _json_safe(self.transcript[-80:]),
         "artifacts": _json_safe(self.artifacts),
     }
@@ -73,6 +75,7 @@ class RunManager:
           run_dir=run_dir,
           started_at=dt.datetime.now(dt.timezone.utc).isoformat(),
           start_paused=start_paused,
+          summary=_draft_summary(draft),
       )
       self._active = record
       self._active_control = control
@@ -328,20 +331,39 @@ def _enrich_run_manifest(run_dir: Path, manifest: dict[str, Any]) -> dict[str, A
     enriched["artifacts"] = artifacts
 
   snapshot_path = run_dir / "config_snapshot.json"
-  if snapshot_path.exists() and "summary" not in enriched:
+  if snapshot_path.exists():
     try:
       snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
       snapshot = {}
-    contestants = snapshot.get("contestants") or []
-    run = snapshot.get("run") or {}
-    enriched["summary"] = {
-        "candidates": [item.get("name") for item in contestants],
-        "max_steps": run.get("max_steps"),
-        "model": run.get("model_name"),
-        "snapshot_at": snapshot.get("snapshot_at"),
-    }
+    summary = _draft_summary(snapshot)
+    summary["snapshot_at"] = snapshot.get("snapshot_at")
+    enriched["summary"] = {**summary, **(enriched.get("summary") or {})}
   return enriched
+
+
+def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
+  """Returns compact run context for UI history and manifests."""
+  contestants = draft.get("contestants") or []
+  run = draft.get("run") or {}
+  return {
+      "selected_pair": [
+          item.get("name") for item in contestants if item.get("name")
+      ],
+      "candidates": [
+          item.get("name") for item in contestants if item.get("name")
+      ],
+      "selected_candidate_ids": draft.get("selected_candidate_ids") or [],
+      "source_root": draft.get("source_root"),
+      "scene_count": len(draft.get("scenes") or []),
+      "max_steps": run.get("max_steps"),
+      "disable_language_model": bool(run.get("disable_language_model")),
+      "api_type": run.get("api_type"),
+      "model_name": run.get("model_name"),
+      "model": run.get("model_name"),
+      "start_paused": run.get("start_paused", True) is not False,
+      "checkpoint_every_step": run.get("checkpoint_every_step", True) is not False,
+  }
 
 
 def _install_json_safe_checkpointing(sim: Any) -> None:

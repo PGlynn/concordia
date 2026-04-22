@@ -100,6 +100,32 @@ class RunnerTest(absltest.TestCase):
     self.assertTrue(response["control"]["is_paused"])
     self.assertEqual(response["control"]["state"], "paused")
 
+  def test_draft_summary_captures_pair_and_run_settings(self):
+    draft = {
+        "source_root": "/tmp/starter",
+        "selected_candidate_ids": ["alex_id", "blake_id"],
+        "contestants": [{"name": "Alex"}, {"name": "Blake"}],
+        "scenes": [{"id": "pod"}],
+        "run": {
+            "max_steps": 12,
+            "disable_language_model": True,
+            "api_type": "openai",
+            "model_name": "gpt-4o-mini",
+            "start_paused": False,
+            "checkpoint_every_step": False,
+        },
+    }
+
+    summary = runner._draft_summary(draft)  # pylint: disable=protected-access
+
+    self.assertEqual(summary["selected_pair"], ["Alex", "Blake"])
+    self.assertEqual(summary["selected_candidate_ids"], ["alex_id", "blake_id"])
+    self.assertEqual(summary["scene_count"], 1)
+    self.assertEqual(summary["max_steps"], 12)
+    self.assertTrue(summary["disable_language_model"])
+    self.assertFalse(summary["start_paused"])
+    self.assertFalse(summary["checkpoint_every_step"])
+
 
 if __name__ == "__main__":
   absltest.main()

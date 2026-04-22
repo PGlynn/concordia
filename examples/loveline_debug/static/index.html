@@ -217,6 +217,12 @@
     }
     .error { color: var(--bad); font-weight: 650; }
     .muted { color: var(--muted); overflow-wrap: anywhere; }
+    .dirty { color: var(--warn); font-weight: 650; }
+    .safe-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
     ul { padding-left: 18px; }
     a { color: #0f766e; }
     @media (max-width: 1050px) {
@@ -232,6 +238,7 @@
     <h1>Loveline Concordia Debug</h1>
     <div class="row" style="max-width: 520px">
       <input id="draftName" value="two_candidate_debug" aria-label="Draft name">
+      <span id="dirtyState" class="muted" aria-live="polite">No unsaved changes</span>
       <button id="saveDraft">Save Draft</button>
       <button id="runDraft" class="warn">Launch Run</button>
     </div>
@@ -249,6 +256,14 @@
           <select id="loadDraft"></select>
           <button id="loadDraftBtn" class="secondary">Load</button>
         </div>
+      </div>
+      <div class="band">
+        <h2>Restore / Reset</h2>
+        <div class="safe-actions">
+          <button id="restoreSelection" class="secondary" type="button">Restore Pair From Source</button>
+          <button id="resetDefault" class="secondary" type="button">Reset To Default Source Pair</button>
+        </div>
+        <div class="muted">Rebuilds the browser draft from source-backed data.</div>
       </div>
       <div class="band">
         <h2>Selected Pair</h2>

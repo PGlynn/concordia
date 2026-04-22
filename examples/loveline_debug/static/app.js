@@ -4,6 +4,8 @@ let activeTab = "config";
 let latestStatus = null;
 let inspectorState = null;
 let compareState = null;
+let cleanDraftJson = "";
+let isDirty = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -19,6 +21,45 @@ async function api(path, options = {}) {
 
 function pretty(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function draftFingerprint(value) {
+  return JSON.stringify(value ?? null, (_key, item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    return Object.keys(item).sort().reduce((result, key) => {
+      result[key] = item[key];
+      return result;
+    }, {});
+  });
+}
+
+function summarizeDraftContext(value) {
+  const run = value?.run || {};
+  const contestants = value?.contestants || [];
+  return {
+    selected_pair: contestants.map((item) => item.name).filter(Boolean),
+    selected_candidate_ids: value?.selected_candidate_ids || [],
+    max_steps: run.max_steps,
+    disable_language_model: Boolean(run.disable_language_model),
+    api_type: run.api_type,
+    model_name: run.model_name,
+    start_paused: run.start_paused !== false,
+    checkpoint_every_step: run.checkpoint_every_step !== false,
+    scene_count: (value?.scenes || []).length,
+    source_root: value?.source_root,
+  };
+}
+
+function runContextLabel(context) {
+  const pair = (context?.selected_pair || context?.candidates || []).filter(Boolean).join(" vs ");
+  const lm = context?.disable_language_model ? "LM disabled" : (context?.model_name || context?.model || "LM enabled");
+  return [
+    pair,
+    context?.max_steps ? `${context.max_steps} steps` : "",
+    lm,
+    context?.start_paused === false ? "starts playing" : "starts paused",
+    context?.checkpoint_every_step === false ? "no checkpoints" : "checkpoints",
+  ].filter(Boolean).join(" | ");
 }
 
 function displayValue(value) {
@@ -38,6 +79,36 @@ function escapeHtml(value) {
 function setMessage(text, isError = false) {
   $("message").textContent = text;
   $("message").className = isError ? "error" : "muted";
+}
+
+function updateDirtyIndicator() {
+  const element = $("dirtyState");
+  if (!element) return;
+  element.textContent = isDirty ? "Unsaved changes" : "No unsaved changes";
+  element.className = isDirty ? "dirty" : "muted";
+}
+
+function markClean() {
+  cleanDraftJson = draftFingerprint(draft);
+  isDirty = false;
+  updateDirtyIndicator();
+}
+
+function markDirty() {
+  if (!cleanDraftJson) cleanDraftJson = draftFingerprint(draft);
+  isDirty = true;
+  updateDirtyIndicator();
+}
+
+function refreshDirtyState() {
+  isDirty = Boolean(cleanDraftJson) && draftFingerprint(draft) !== cleanDraftJson;
+  updateDirtyIndicator();
+  return isDirty;
+}
+
+function confirmDiscardChanges(action) {
+  if (!isDirty) return true;
+  return window.confirm(`Unsaved changes may be replaced. Continue and ${action}?`);
 }
 
 function linesFromText(text) {
@@ -423,6 +494,7 @@ function displayRunState(payload) {
 
 function renderRunSummary(payload) {
   const active = payload.active;
+  const context = active?.summary || active?.run_context;
   const rows = active
     ? [
         ["Run", active.run_id],
@@ -430,6 +502,8 @@ function renderRunSummary(payload) {
         ["Control", displayRunState(payload)],
         ["Step", payload.control?.current_step ?? active.current_step ?? 0],
         ["Launch", active.start_paused ? "started paused" : "started playing"],
+        ["Pair", (context?.selected_pair || context?.candidates || []).filter(Boolean).join(" vs ")],
+        ["Settings", runContextLabel(context)],
       ]
     : [["Run", "none"], ["Lifecycle", "idle"], ["Control", "idle"], ["Step", "0"]];
   $("runSummary").innerHTML = rows.map(([key, value]) =>
@@ -473,13 +547,11 @@ function renderRecentRuns(runs) {
     const html = artifactRel(links.html_log);
     const json = artifactRel(links.structured_log);
     const cfg = artifactRel(links.config_snapshot);
-    const summary = run.summary || {};
-    const candidates = (summary.candidates || []).filter(Boolean).join(" vs ");
+    const summary = run.summary || run.run_context || {};
     const meta = [
       run.status || "unknown",
       run.finished_at || run.started_at || summary.snapshot_at || "",
-      candidates,
-      summary.max_steps ? `${summary.max_steps} steps` : "",
+      runContextLabel(summary),
     ].filter(Boolean).join(" | ");
     return `<li class="run-item">
       <div><strong>${escapeHtml(id)}</strong><div class="muted">${escapeHtml(meta)}</div></div>
@@ -603,6 +675,21 @@ async function loadCompare(leftRunId, rightRunId) {
   renderCompare();
 }
 
+async function loadSourceSelection(ids, message) {
+  const path = `/api/draft/selection?ids=${encodeURIComponent(ids.join(","))}`;
+  draft = await api(path);
+  hydrateInputs();
+  markClean();
+  setMessage(message);
+}
+
+async function resetToDefaultSourceDraft() {
+  draft = await api("/api/draft/default");
+  hydrateInputs();
+  markClean();
+  setMessage("Default source pair restored.");
+}
+
 function renderCompare() {
   if (!compareState) return;
   setCompareMessage("");
@@ -655,16 +742,34 @@ async function init() {
   populateChrome();
   draft = await api("/api/draft/default");
   hydrateInputs();
+  markClean();
   await refreshDrafts();
   await refreshStatus();
   setInterval(refreshStatus, 2000);
 }
 
 if (typeof document !== "undefined") {
+  document.addEventListener("input", (event) => {
+    if (event.target.id === "draftName" || event.target.closest("[data-tab-panel]")) {
+      markDirty();
+    }
+  });
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "draftName" || event.target.closest("[data-tab-panel]")) {
+      markDirty();
+    }
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (!isDirty) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
   document.querySelectorAll(".tabs button").forEach((button) => {
     button.addEventListener("click", () => {
       try {
         collectDraft();
+        refreshDirtyState();
         activeTab = button.dataset.tab;
         document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("active"));
         button.classList.add("active");
@@ -681,11 +786,13 @@ if (typeof document !== "undefined") {
 
   $("applySelection").addEventListener("click", async () => {
     try {
+      if (!confirmDiscardChanges("apply the selected pair from source")) return;
       const currentDraft = collectDraft();
       const ids = [$("maleCandidate").value, $("femaleCandidate").value].join(",");
       const selectionDraft = await api(`/api/draft/selection?ids=${encodeURIComponent(ids)}`);
       draft = mergeSelectionDraft(currentDraft, selectionDraft);
       hydrateInputs();
+      markDirty();
       setMessage("Pair applied.");
     } catch (error) {
       setMessage(error.message, true);
@@ -700,6 +807,7 @@ if (typeof document !== "undefined") {
       });
       await refreshDrafts();
       hydrateInputs();
+      markClean();
       setMessage(`Saved ${payload.path}`);
     } catch (error) {
       setMessage(error.message, true);
@@ -708,8 +816,10 @@ if (typeof document !== "undefined") {
 
   $("loadDraftBtn").addEventListener("click", async () => {
     try {
+      if (!confirmDiscardChanges("load another saved draft")) return;
       draft = await api(`/api/draft?name=${encodeURIComponent($("loadDraft").value)}`);
       hydrateInputs();
+      markClean();
       setMessage("Draft loaded.");
     } catch (error) {
       setMessage(error.message, true);
@@ -745,6 +855,7 @@ if (typeof document !== "undefined") {
         scene_defaults: raw.scene_defaults ?? draft.scene_defaults,
       };
       hydrateInputs();
+      markDirty();
       setMessage("Config JSON applied.");
     } catch (error) {
       setMessage(error.message, true);
@@ -755,6 +866,7 @@ if (typeof document !== "undefined") {
     try {
       draft.contestants = JSON.parse($("contestantsJson").value);
       hydrateInputs();
+      markDirty();
       setMessage("Candidates JSON applied.");
     } catch (error) {
       setMessage(error.message, true);
@@ -768,6 +880,7 @@ if (typeof document !== "undefined") {
       draft.scene_types = raw.scene_types;
       draft.scenes = raw.scenes;
       hydrateInputs();
+      markDirty();
       setMessage("Scenes JSON applied.");
     } catch (error) {
       setMessage(error.message, true);
@@ -782,6 +895,7 @@ if (typeof document !== "undefined") {
       while (draft.scene_types[name]) name = `scene_type_${++index}`;
       draft.scene_types[name] = {rounds: 1, call_to_action: ""};
       hydrateInputs();
+      markDirty();
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -799,6 +913,7 @@ if (typeof document !== "undefined") {
         premise: Object.fromEntries(names.map((name) => [name, []])),
       });
       hydrateInputs();
+      markDirty();
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -825,10 +940,35 @@ if (typeof document !== "undefined") {
     const removeScene = event.target.closest("[data-remove-scene]");
     if (!removeType && !removeScene) return;
     try {
+      const label = removeType ? "scene type" : "scene";
+      if (!window.confirm(`Remove this ${label} from the browser draft?`)) return;
       collectDraft();
       if (removeType) delete draft.scene_types[removeType.dataset.removeType];
       if (removeScene) draft.scenes.splice(Number(removeScene.dataset.removeScene), 1);
       hydrateInputs();
+      markDirty();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("restoreSelection").addEventListener("click", async () => {
+    try {
+      if (!confirmDiscardChanges("restore this pair from source")) return;
+      collectDraft();
+      await loadSourceSelection(
+        draft.selected_candidate_ids || [],
+        "Current pair restored from source."
+      );
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("resetDefault").addEventListener("click", async () => {
+    try {
+      if (!confirmDiscardChanges("reset to the default source pair")) return;
+      await resetToDefaultSourceDraft();
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -886,5 +1026,8 @@ if (typeof module !== "undefined") {
     remapSceneForSelection,
     renderCompareSide,
     renderTurnDetail,
+    draftFingerprint,
+    runContextLabel,
+    summarizeDraftContext,
   };
 }
