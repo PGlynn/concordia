@@ -59,12 +59,11 @@ http://localhost:8765
 Runs start paused. Click `Step` for deterministic inspection, or `Play` to let
 the run proceed.
 
-By default, `Disable language model` is checked. This uses Concordia's
-`NoLanguageModel`, which is useful for config, checkpoint, and logging smoke
-tests but produces empty free-text actions. The draft still defaults the
-model-backed fields to Loveline's local starter stack: `API Type` is `ollama`
-and `Model` is `qwen3.5:35b-a3b`. Uncheck `Disable language model` when you
-want a full local model-backed run.
+By default, `Disable language model` is unchecked so fresh drafts use
+Loveline's local starter stack: `API Type` is `ollama` and `Model` is
+`qwen3.5:35b-a3b`. Check `Disable language model` when you want Concordia's
+`NoLanguageModel` path for quick config, checkpoint, and logging smoke tests
+without any model dependency.
 
 For `API Type` `ollama`, this debug UI uses a Loveline-local Ollama shim under
 `examples/loveline_debug` instead of changing Concordia's shared Ollama model.

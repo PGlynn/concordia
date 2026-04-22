@@ -169,7 +169,7 @@ def make_draft_for_selection(
       "scenes": scenes,
       "run": {
           "max_steps": 8,
-          "disable_language_model": True,
+          "disable_language_model": False,
           "api_type": DEFAULT_API_TYPE,
           "model_name": DEFAULT_MODEL_NAME,
           "api_key": None,

@@ -79,7 +79,7 @@ function testApplyPairPreservesUnsavedDraftEdits() {
     selected_candidate_ids: ["male_a", "female_b"],
     run: {
       max_steps: 8,
-      disable_language_model: true,
+      disable_language_model: false,
       api_type: "ollama",
       model_name: "qwen3.5:35b-a3b",
       checkpoint_every_step: true,

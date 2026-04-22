@@ -213,7 +213,7 @@ class RunManager:
           self._active_control = None
 
   def _build_model(self, run_settings: dict[str, Any]):
-    if run_settings.get("disable_language_model", True):
+    if run_settings.get("disable_language_model", False):
       return no_language_model.NoLanguageModel()
     return language_model_setup.setup(
         api_type=run_settings.get("api_type") or config_io.DEFAULT_API_TYPE,

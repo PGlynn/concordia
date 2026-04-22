@@ -36,7 +36,7 @@ function testSummarizeDraftContextIncludesGuardrailMetadata() {
     scenes: [{id: "pod"}],
     run: {
       max_steps: 9,
-      disable_language_model: true,
+      disable_language_model: false,
       api_type: "ollama",
       model_name: "qwen3.5:35b-a3b",
       start_paused: false,
@@ -48,7 +48,7 @@ function testSummarizeDraftContextIncludesGuardrailMetadata() {
   assert.deepEqual(summary.selected_candidate_ids, ["alex_id", "blake_id"]);
   assert.equal(summary.scene_count, 1);
   assert.equal(summary.max_steps, 9);
-  assert.equal(summary.disable_language_model, true);
+  assert.equal(summary.disable_language_model, false);
   assert.equal(summary.start_paused, false);
   assert.equal(summary.checkpoint_every_step, false);
 }
@@ -57,16 +57,28 @@ function testRunContextLabelMakesRecentRunsReadable() {
   const label = runContextLabel({
     selected_pair: ["Alex", "Blake"],
     max_steps: 9,
-    disable_language_model: true,
+    disable_language_model: false,
+    model_name: "qwen3.5:35b-a3b",
     start_paused: false,
     checkpoint_every_step: false,
   });
 
-  assert.equal(label, "Alex vs Blake | 9 steps | LM disabled | starts playing | no checkpoints");
+  assert.equal(label, "Alex vs Blake | 9 steps | qwen3.5:35b-a3b | starts playing | no checkpoints");
+}
+
+function testRunContextLabelKeepsSmokeModeReadable() {
+  const label = runContextLabel({
+    selected_pair: ["Alex", "Blake"],
+    max_steps: 9,
+    disable_language_model: true,
+  });
+
+  assert.equal(label, "Alex vs Blake | 9 steps | LM disabled | starts paused | checkpoints");
 }
 
 testBrowserFallbackRunSettingsUseLocalLovelineModel();
 testDraftFingerprintIgnoresObjectKeyOrder();
 testSummarizeDraftContextIncludesGuardrailMetadata();
 testRunContextLabelMakesRecentRunsReadable();
+testRunContextLabelKeepsSmokeModeReadable();
 console.log("app_guardrails_test passed");

@@ -28,10 +28,10 @@ class ConfigIoTest(absltest.TestCase):
         ["man", "woman"],
     )
 
-  def test_default_draft_keeps_smoke_lm_disabled_but_points_to_local_model(self):
+  def test_default_draft_enables_lm_and_points_to_local_model(self):
     draft = config_io.make_default_draft()
 
-    self.assertTrue(draft["run"]["disable_language_model"])
+    self.assertFalse(draft["run"]["disable_language_model"])
     self.assertEqual(draft["run"]["api_type"], "ollama")
     self.assertEqual(draft["run"]["model_name"], "qwen3.5:35b-a3b")
 
