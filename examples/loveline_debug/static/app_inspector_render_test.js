@@ -11,6 +11,24 @@ function testRenderTurnDetailShowsDebugFields() {
       action: "I am here for something real.",
       raw_utterance_text: "I am here for something real.",
       concordia_event_text: "Alex: I am here for something real.",
+      stock_key_questions: [
+        {
+          name: "SituationPerception",
+          label: "Situation Perception",
+          value: "Alex is currently in a pod date.",
+          prompt: "What situation is Alex in right now?",
+        },
+        {
+          name: "SelfPerception",
+          label: "Self Perception",
+          value: "Alex is reflective and cautious.",
+        },
+        {
+          name: "PersonBySituation",
+          label: "Person By Situation",
+          value: "Alex would answer with reassurance.",
+        },
+      ],
       action_prompt: ["Instructions:", "Answer honestly."],
       observations: ["[observation] Blake asked about commitment."],
       components: [{name: "Goal", value: "Find a serious match."}],
@@ -29,6 +47,10 @@ function testRenderTurnDetailShowsDebugFields() {
   );
 
   assert.match(html, /Action Prompt/);
+  assert.match(html, /Stock Key-Question Outputs/);
+  assert.match(html, /Situation Perception/);
+  assert.match(html, /Alex is reflective and cautious/);
+  assert.match(html, /Alex would answer with reassurance/);
   assert.match(html, /Blake asked about commitment/);
   assert.match(html, /Component Outputs/);
   assert.match(html, /Find a serious match/);

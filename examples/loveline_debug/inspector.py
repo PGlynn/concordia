@@ -13,6 +13,11 @@ _MAX_COMPONENTS = 12
 _MAX_MEMORIES = 24
 _MAX_GM_ENTRIES = 8
 _MAX_TRANSCRIPT_TURNS = 3
+_STOCK_KEY_QUESTION_COMPONENTS = (
+    ("SituationPerception", "Situation Perception"),
+    ("SelfPerception", "Self Perception"),
+    ("PersonBySituation", "Person By Situation"),
+)
 
 
 def load_run_inspector(run_dir: Path) -> dict[str, Any]:
@@ -233,6 +238,7 @@ def _selected_entry_payload(
       entity,
       context.get("action") or selected.get("action", ""),
   )
+  stock_key_questions = _stock_key_question_outputs(raw_entry_data)
   return {
       "index": selected["index"],
       "step": step,
@@ -242,6 +248,7 @@ def _selected_entry_payload(
       "summary": selected["summary"],
       "action": context.get("action") or selected.get("action", ""),
       **text_surfaces,
+      "stock_key_questions": stock_key_questions,
       "action_prompt": action_prompt,
       "observations": observations,
       "components": components,
@@ -258,6 +265,32 @@ def _selected_entry_payload(
           "data": raw_entry_data,
       },
   }
+
+
+def _stock_key_question_outputs(raw_entry_data: Any) -> list[dict[str, Any]]:
+  """Extracts stock basic__Entity key-question outputs from an entity log entry."""
+  if not isinstance(raw_entry_data, dict):
+    return []
+  value = raw_entry_data.get("value")
+  if not isinstance(value, dict):
+    return []
+
+  rows = []
+  for component_name, label in _STOCK_KEY_QUESTION_COMPONENTS:
+    component_data = value.get(component_name)
+    if not isinstance(component_data, dict) or "Value" not in component_data:
+      continue
+    row = {
+        "name": component_name,
+        "label": label,
+        "value": component_data["Value"],
+    }
+    if "Prompt" in component_data:
+      row["prompt"] = component_data["Prompt"]
+    if "Summary" in component_data:
+      row["summary"] = component_data["Summary"]
+    rows.append(row)
+  return rows
 
 
 def _component_rows(components: Any) -> list[dict[str, Any]]:
@@ -385,6 +418,7 @@ def _first_turn_summary(turn: dict[str, Any] | None) -> dict[str, Any] | None:
       "raw_utterance_text": turn.get("raw_utterance_text"),
       "concordia_event_text": turn.get("concordia_event_text"),
       "action_prompt": turn.get("action_prompt"),
+      "stock_key_questions": turn.get("stock_key_questions") or [],
       "observations": turn.get("observations") or [],
       "components": turn.get("components") or [],
       "game_master_entries": turn.get("game_master_entries") or [],

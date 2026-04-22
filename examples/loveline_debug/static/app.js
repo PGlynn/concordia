@@ -792,6 +792,24 @@ function renderComponentRows(components) {
   ).join("")}</div>`;
 }
 
+function renderStockKeyQuestions(rows) {
+  if (!rows || !rows.length) return "";
+  return `<div class="inspector-block"><h3>Stock Key-Question Outputs</h3>${rows.map((item) => {
+    const title = item.label || item.name || "Key Question";
+    const details = [];
+    if (item.value !== undefined && item.value !== null) {
+      details.push(`Output:\n${displayValue(item.value)}`);
+    }
+    if (item.prompt !== undefined && item.prompt !== null) {
+      details.push(`Prompt:\n${displayValue(item.prompt)}`);
+    }
+    if (item.summary !== undefined && item.summary !== null) {
+      details.push(`Summary:\n${displayValue(item.summary)}`);
+    }
+    return `<details open><summary>${escapeHtml(title)}</summary><pre>${escapeHtml(details.join("\n\n"))}</pre></details>`;
+  }).join("")}</div>`;
+}
+
 function renderGmEntries(entries) {
   if (!entries || !entries.length) return "";
   return `<div class="inspector-block"><h3>GM Reaction / Context</h3>${entries.map((entry) =>
@@ -810,6 +828,7 @@ function renderTurnDetail(turn, state = inspectorState) {
     `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
   ).join("")}</div>
   ${renderUtteranceTextSurfaces(turn)}
+  ${renderStockKeyQuestions(turn.stock_key_questions)}
   ${renderTextBlock("Action Prompt", turn.action_prompt)}
   ${renderListBlock("Observations", turn.observations)}
   ${renderComponentRows(turn.components)}

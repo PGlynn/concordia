@@ -26,6 +26,24 @@ class InspectorTest(unittest.TestCase):
             "value": {
                 "Goal": {"Key": "Goal", "Value": "Find a serious match."},
                 "Situation": {"Key": "Situation", "Value": "Alex is in a pod."},
+                "SituationPerception": {
+                    "Key": "SituationPerception",
+                    "Value": "Alex is currently in a pod date.",
+                    "Prompt": "What situation is Alex in right now?",
+                },
+                "SelfPerception": {
+                    "Key": "SelfPerception",
+                    "Value": "Alex is reflective and cautious.",
+                    "Prompt": "What kind of person is Alex?",
+                },
+                "PersonBySituation": {
+                    "Key": "PersonBySituation",
+                    "Value": "Alex would answer with reassurance.",
+                    "Prompt": (
+                        "What would a person like Alex do in a situation like "
+                        "this?"
+                    ),
+                },
                 "__observation__": {
                     "Key": "Observation",
                     "Value": ["[observation] Blake asked about commitment."],
@@ -79,6 +97,18 @@ class InspectorTest(unittest.TestCase):
         selected["observations"], ["[observation] Blake asked about commitment."]
     )
     self.assertIn({"name": "Goal", "value": "Find a serious match."}, selected["components"])
+    self.assertEqual(
+        [item["name"] for item in selected["stock_key_questions"]],
+        ["SituationPerception", "SelfPerception", "PersonBySituation"],
+    )
+    self.assertEqual(
+        selected["stock_key_questions"][1]["value"],
+        "Alex is reflective and cautious.",
+    )
+    self.assertEqual(
+        selected["stock_key_questions"][2]["prompt"],
+        "What would a person like Alex do in a situation like this?",
+    )
     self.assertEqual(selected["entity_memories"], ["Alex wants marriage."])
     self.assertEqual(selected["game_master_memories"], ["The pod date started."])
     self.assertEqual(
