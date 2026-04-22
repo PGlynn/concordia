@@ -240,6 +240,35 @@
       max-width: 420px;
       overflow-wrap: anywhere;
     }
+    .flow-panel {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .flow-step {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 10px;
+    }
+    .flow-step strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+    .flow-arrow {
+      color: var(--muted);
+      font-weight: 650;
+      text-align: center;
+    }
+    .component-state {
+      display: grid;
+      gap: 8px;
+    }
+    .component-state .pill.disabled {
+      border-color: #f1c6c6;
+      color: var(--bad);
+      background: #fff7f7;
+    }
     #logDetails {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -315,6 +344,7 @@
         <button data-tab="scenes">Scenes</button>
         <button data-tab="snapshot">Snapshot</button>
         <button data-tab="logs">Logs</button>
+        <button data-tab="help">Help</button>
       </div>
 
       <div data-tab-panel="config" id="tabConfig">
@@ -400,6 +430,8 @@
         <h2>Selected Entry</h2>
         <pre id="logDetails">No entry selected.</pre>
       </div>
+
+      <div data-tab-panel="help" id="tabHelp" style="display:none"></div>
     </section>
     <section>
       <div class="band">

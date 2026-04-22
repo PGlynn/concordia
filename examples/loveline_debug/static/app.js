@@ -249,6 +249,70 @@ function collectHistoryLengthParams(field, rawParams = {}) {
   return result;
 }
 
+function stockFlowHelpHtml(value = draft) {
+  const contestants = value?.contestants || [];
+  const flowSteps = [
+    [
+      "Instructions",
+      "The run and scene instructions establish the actor goal, role, and current call to action.",
+    ],
+    [
+      "Observation history / memory retrieval",
+      "Recent observations and configured memory windows provide the immediate context each stock question sees.",
+    ],
+    [
+      "SituationPerception",
+      "Generates a short summary of what situation the actor appears to be in.",
+    ],
+    [
+      "SelfPerception",
+      "Generates a short summary of how the actor sees themself in that situation.",
+    ],
+    [
+      "PersonBySituation",
+      "Generates a short summary of what the actor would do as that person in that situation.",
+    ],
+    [
+      "ConcatActComponent",
+      "Concatenates the enabled stock summaries and other component outputs into the final act prompt.",
+    ],
+    [
+      "Final action output",
+      "The language model answer becomes the raw utterance, then Concordia records the event/display text.",
+    ],
+  ];
+  const componentState = contestants.length
+    ? contestants.map((candidate) => {
+        const settings = stockBasicEntityComponentSettings(candidate.entity_params || {});
+        const chips = STOCK_BASIC_ENTITY_COMPONENT_FIELDS.map(([key, label]) => {
+          const enabled = settings[key] !== false;
+          const className = enabled ? "pill" : "pill disabled";
+          return `<span class="${className}">${escapeHtml(label)}: ${enabled ? "enabled" : "disabled"}</span>`;
+        }).join("");
+        return `<div><strong>${escapeHtml(candidate.name || "Candidate")}</strong><div>${chips}</div></div>`;
+      }).join("")
+    : '<div class="muted">Load a draft to see which generated stock question components are enabled for each candidate.</div>';
+  return `<div class="editor-block">
+    <div class="block-title"><h2>Stock Actor Flow</h2></div>
+    <p class="muted">Rough mapping for a stock Loveline actor turn:</p>
+    <p><code>instructions -&gt; observation history / memory retrieval -&gt; SituationPerception -&gt; SelfPerception -&gt; PersonBySituation -&gt; ConcatActComponent -&gt; final action output</code></p>
+    <div class="flow-panel">${flowSteps.map(([title, text], index) =>
+      `${index ? '<div class="flow-arrow">down</div>' : ""}<div class="flow-step"><strong>${escapeHtml(title)}</strong><span class="muted">${escapeHtml(text)}</span></div>`
+    ).join("")}</div>
+    <p>The toggled stock question components are generated summaries that condition the final act prompt. Disabling one removes that generated summary from the stock inputs that <code>ConcatActComponent</code> combines for that candidate.</p>
+  </div>
+  <div class="editor-block">
+    <div class="block-title"><h2>Current Stock Question Toggles</h2></div>
+    <div class="component-state">${componentState}</div>
+  </div>`;
+}
+
+function renderHelpTab() {
+  const element = $("tabHelp");
+  if (!element) return;
+  element.innerHTML = stockFlowHelpHtml(draft);
+}
+
 function selectedNames() {
   return (draft?.contestants || []).map((item) => item.name).filter(Boolean);
 }
@@ -402,6 +466,7 @@ function hydrateInputs() {
   renderConfigTab();
   renderCandidatesTab();
   renderScenesTab();
+  renderHelpTab();
   $("snapshotJson").value = pretty(draft);
 }
 
@@ -1299,6 +1364,7 @@ if (typeof module !== "undefined") {
     mergeSelectionDraft,
     remapSceneForSelection,
     renderCompareSide,
+    stockFlowHelpHtml,
     renderLogBrowser,
     renderTurnDetail,
     formatLogDetails,
