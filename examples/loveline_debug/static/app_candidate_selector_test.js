@@ -37,6 +37,8 @@ function testCandidateEditorRendersOneCandidateBlock() {
 
   assert.match(html, /data-candidate-index="1"/);
   assert.match(html, /value="Blake"/);
+  assert.match(html, /<select data-candidate-field="prefab">/);
+  assert.match(html, /<option value="basic__Entity" selected>basic Entity<\/option>/);
   assert.doesNotMatch(html, /Alex/);
 }
 

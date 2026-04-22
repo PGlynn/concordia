@@ -1,4 +1,6 @@
 const assert = require("assert/strict");
+const fs = require("fs");
+const path = require("path");
 
 const {
   DEFAULT_API_TYPE,
@@ -76,9 +78,17 @@ function testRunContextLabelKeepsSmokeModeReadable() {
   assert.equal(label, "Alex vs Blake | 9 steps | LM disabled | starts paused | checkpoints");
 }
 
+function testMetadataFieldsAreReadOnlyInNormalForm() {
+  const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+
+  assert.match(html, /<label>Created At<input id="createdAt" readonly aria-readonly="true"><\/label>/);
+  assert.match(html, /<label>Updated At<input id="updatedAt" readonly aria-readonly="true"><\/label>/);
+}
+
 testBrowserFallbackRunSettingsUseLocalLovelineModel();
 testDraftFingerprintIgnoresObjectKeyOrder();
 testSummarizeDraftContextIncludesGuardrailMetadata();
 testRunContextLabelMakesRecentRunsReadable();
 testRunContextLabelKeepsSmokeModeReadable();
+testMetadataFieldsAreReadOnlyInNormalForm();
 console.log("app_guardrails_test passed");

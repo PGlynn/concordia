@@ -67,6 +67,10 @@
       background: white;
       color: var(--ink);
     }
+    input[readonly] {
+      color: var(--muted);
+      background: #f8fafc;
+    }
     textarea {
       min-height: 96px;
       resize: vertical;
@@ -240,9 +244,65 @@
       max-width: 420px;
       overflow-wrap: anywhere;
     }
-    .flow-panel {
+    .draft-loader {
+      border-color: #99f6e4;
+      background: #f0fdfa;
+    }
+    .draft-loader h2 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .draft-loader label {
+      color: #0f766e;
+      margin-top: 0;
+    }
+    .draft-loader select {
+      min-height: 40px;
+      font-weight: 650;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .draft-loader button {
+      min-height: 40px;
+      border-color: #0f766e;
+    }
+    .draft-loader .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .dialogue-context {
+      margin-bottom: 12px;
+    }
+    .dialogue-list {
       display: grid;
       gap: 10px;
+    }
+    .dialogue-turn {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: white;
+    }
+    .dialogue-turn-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .dialogue-speaker {
+      color: var(--ink);
+      font-size: 13px;
+    }
+    .dialogue-text {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .flow-panel {
+      display: grid;
+      gap: 0;
       margin-bottom: 12px;
     }
     .flow-step {
@@ -255,10 +315,11 @@
       display: block;
       margin-bottom: 3px;
     }
-    .flow-arrow {
-      color: var(--muted);
-      font-weight: 650;
-      text-align: center;
+    .flow-connector {
+      width: 2px;
+      height: 18px;
+      margin: 0 auto;
+      background: var(--line);
     }
     .component-state {
       display: grid;
@@ -296,6 +357,7 @@
       section { border-right: 0; border-bottom: 1px solid var(--line); }
       .grid.two, .grid.scene-grid, .grid.type-grid, .compare-grid { grid-template-columns: 1fr; }
       .log-toolbar { grid-template-columns: 1fr; }
+      .draft-loader .row { grid-template-columns: 1fr; }
       header { align-items: stretch; flex-direction: column; gap: 10px; }
     }
   </style>
@@ -316,7 +378,7 @@
         <h2>Source</h2>
         <div id="sourceRoot" class="muted"></div>
       </div>
-      <div class="band">
+      <div class="band draft-loader">
         <h2>Saved Draft</h2>
         <label for="loadDraft">Draft</label>
         <div class="row">
@@ -340,6 +402,7 @@
     <section>
       <div class="tabs">
         <button data-tab="config" class="active">Config</button>
+        <button data-tab="dialogue">Dialogue</button>
         <button data-tab="candidates">Candidates</button>
         <button data-tab="scenes">Scenes</button>
         <button data-tab="snapshot">Snapshot</button>
@@ -353,8 +416,8 @@
           <div class="grid two">
             <label>Schema Version<input id="schemaVersion" type="number" min="1"></label>
             <label>Source Root<input id="sourceRootInput"></label>
-            <label>Created At<input id="createdAt"></label>
-            <label>Updated At<input id="updatedAt"></label>
+            <label>Created At<input id="createdAt" readonly aria-readonly="true"></label>
+            <label>Updated At<input id="updatedAt" readonly aria-readonly="true"></label>
           </div>
         </div>
         <div class="editor-block">
@@ -387,6 +450,16 @@
         </details>
       </div>
 
+      <div data-tab-panel="dialogue" id="tabDialogue" style="display:none">
+        <div class="log-toolbar">
+          <label>Run<select id="cleanDialogueRunSelect"></select></label>
+          <div id="cleanDialogueMessage" class="muted"></div>
+          <button id="loadCleanDialogue" class="secondary" type="button">Load Dialogue</button>
+        </div>
+        <div id="cleanDialogueContext" class="dialogue-context"></div>
+        <div id="cleanDialogueView"></div>
+      </div>
+
       <div data-tab-panel="candidates" id="tabCandidates" style="display:none">
         <div id="candidateSelector"></div>
         <div id="candidateEditor"></div>
@@ -406,6 +479,7 @@
         <div class="block-title"><h2>Scene Types</h2><button id="addSceneType" class="secondary small">Add Type</button></div>
         <div id="sceneTypeEditor"></div>
         <div class="block-title"><h2>Scene List</h2><button id="addScene" class="secondary small">Add Scene</button></div>
+        <div id="sceneSelector"></div>
         <div id="sceneListEditor"></div>
         <details>
           <summary>Scenes payload JSON</summary>

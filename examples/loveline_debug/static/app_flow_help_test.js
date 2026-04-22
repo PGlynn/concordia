@@ -30,6 +30,8 @@ function testHelpRendersStockActorFlowAndToggleState() {
   assert.match(html, /Stock Actor Flow/);
   assert.match(html, /instructions -&gt; observation history \/ memory retrieval -&gt; SituationPerception -&gt; SelfPerception -&gt; PersonBySituation -&gt; ConcatActComponent -&gt; final action output/);
   assert.match(html, /generated summaries that condition the final act prompt/);
+  assert.match(html, /flow-connector/);
+  assert.doesNotMatch(html, />down</);
   assert.match(html, /Current Stock Question Toggles/);
   assert.match(html, /Alex/);
   assert.match(html, /Situation Perception: enabled/);

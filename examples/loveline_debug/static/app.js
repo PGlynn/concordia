@@ -5,9 +5,11 @@ let latestStatus = null;
 let inspectorState = null;
 let compareState = null;
 let logsState = null;
+let cleanDialogueState = null;
 let cleanDraftJson = "";
 let isDirty = false;
 let selectedCandidateIndex = 0;
+let selectedSceneIndex = 0;
 
 const DEFAULT_API_TYPE = "ollama";
 const DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b";
@@ -21,6 +23,11 @@ const STOCK_BASIC_ENTITY_COMPONENT_FIELDS = [
   ["SituationPerception", "Situation Perception"],
   ["SelfPerception", "Self Perception"],
   ["PersonBySituation", "Person by Situation"],
+];
+const ENTITY_PREFAB_OPTIONS = [
+  ["basic__Entity", "basic Entity"],
+  ["basic_with_plan__Entity", "basic with plan Entity"],
+  ["conversational__Entity", "conversational Entity"],
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -298,7 +305,7 @@ function stockFlowHelpHtml(value = draft) {
     <p class="muted">Rough mapping for a stock Loveline actor turn:</p>
     <p><code>instructions -&gt; observation history / memory retrieval -&gt; SituationPerception -&gt; SelfPerception -&gt; PersonBySituation -&gt; ConcatActComponent -&gt; final action output</code></p>
     <div class="flow-panel">${flowSteps.map(([title, text], index) =>
-      `${index ? '<div class="flow-arrow">down</div>' : ""}<div class="flow-step"><strong>${escapeHtml(title)}</strong><span class="muted">${escapeHtml(text)}</span></div>`
+      `${index ? '<div class="flow-connector" aria-hidden="true"></div>' : ""}<div class="flow-step"><strong>${escapeHtml(title)}</strong><span class="muted">${escapeHtml(text)}</span></div>`
     ).join("")}</div>
     <p>The toggled stock question components are generated summaries that condition the final act prompt. Disabling one removes that generated summary from the stock inputs that <code>ConcatActComponent</code> combines for that candidate.</p>
   </div>
@@ -383,8 +390,21 @@ function candidateSelectorHtml(contestants, selectedIndex) {
   return `<label>Candidate<select id="candidateSelect">${options}</select></label>`;
 }
 
+function entityPrefabOptionsHtml(selectedPrefab = "basic__Entity") {
+  const knownPrefabs = new Set(ENTITY_PREFAB_OPTIONS.map(([value]) => value));
+  const options = ENTITY_PREFAB_OPTIONS.map(([value, label]) => {
+    const selected = value === selectedPrefab ? " selected" : "";
+    return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
+  });
+  if (selectedPrefab && !knownPrefabs.has(selectedPrefab)) {
+    options.push(`<option value="${escapeHtml(selectedPrefab)}" selected>${escapeHtml(selectedPrefab)} (current)</option>`);
+  }
+  return options.join("");
+}
+
 function candidateEditorHtml(candidate, index) {
   const params = candidate.entity_params || {};
+  const prefab = candidate.prefab || "basic__Entity";
   return `<article class="editor-block" data-candidate-index="${index}">
       <div class="block-title">
         <h3>${escapeHtml(candidate.name || `Candidate ${index + 1}`)}</h3>
@@ -394,7 +414,7 @@ function candidateEditorHtml(candidate, index) {
         <label>Name<input data-candidate-field="name" value="${escapeHtml(candidate.name)}"></label>
         <label>Gender<input data-candidate-field="gender" value="${escapeHtml(candidate.gender)}"></label>
         <label>ID<input data-candidate-field="id" value="${escapeHtml(candidate.id)}"></label>
-        <label>Prefab<input data-candidate-field="prefab" value="${escapeHtml(candidate.prefab || "basic__Entity")}"></label>
+        <label>Prefab<select data-candidate-field="prefab">${entityPrefabOptionsHtml(prefab)}</select></label>
       </div>
       <label>Entity Goal<textarea data-candidate-field="goal">${escapeHtml(params.goal || "")}</textarea></label>
       <label class="checkline"><input data-candidate-field="prefix_entity_name" type="checkbox" ${params.prefix_entity_name ? "checked" : ""}> Prefix entity name</label>
@@ -414,7 +434,9 @@ function candidateEditorHtml(candidate, index) {
 }
 
 function sceneTypeOptions(selectedType) {
-  return Object.keys(draft.scene_types || {}).map((name) => {
+  const names = Object.keys(draft?.scene_types || {});
+  if (selectedType && !names.includes(selectedType)) names.push(selectedType);
+  return names.map((name) => {
     const selected = name === selectedType ? " selected" : "";
     return `<option value="${escapeHtml(name)}"${selected}>${escapeHtml(name)}</option>`;
   }).join("");
@@ -440,36 +462,59 @@ function renderSceneTypeEditor() {
   ).join("");
 }
 
+function clampSelectedSceneIndex(scenes = draft?.scenes || []) {
+  const maxIndex = Math.max(scenes.length - 1, 0);
+  selectedSceneIndex = Math.min(Math.max(Number(selectedSceneIndex) || 0, 0), maxIndex);
+  return selectedSceneIndex;
+}
+
+function sceneSelectorHtml(scenes, selectedIndex) {
+  if (!scenes.length) return "";
+  const options = scenes.map((scene, index) => {
+    const label = scene.id || `Scene ${index + 1}`;
+    const selected = index === selectedIndex ? " selected" : "";
+    return `<option value="${index}"${selected}>${escapeHtml(label)}</option>`;
+  }).join("");
+  return `<label>Scene<select id="sceneSelect">${options}</select></label>`;
+}
+
+function sceneEditorHtml(scene, index, names) {
+  const premise = scene.premise || {};
+  const participantChecks = names.map((name) => {
+    const checked = (scene.participants || []).includes(name) ? " checked" : "";
+    return `<label class="checkline"><input type="checkbox" data-scene-participant="${escapeHtml(name)}"${checked}> ${escapeHtml(name)}</label>`;
+  }).join("");
+  const premiseFields = names.map((name) =>
+    `<label>${escapeHtml(name)} Premise<textarea data-scene-premise="${escapeHtml(name)}">${escapeHtml(textFromLines(premise[name]))}</textarea></label>`
+  ).join("");
+  return `<article class="editor-block" data-scene-index="${index}">
+    <div class="block-title">
+      <h3>${escapeHtml(scene.id || `Scene ${index + 1}`)}</h3>
+      <button class="secondary small" data-remove-scene="${index}">Remove</button>
+    </div>
+    <div class="grid scene-grid">
+      <label>Scene ID<input data-scene-field="id" value="${escapeHtml(scene.id || "")}"></label>
+      <label>Type<select data-scene-field="type">${sceneTypeOptions(scene.type)}</select></label>
+      <label>Rounds Override<input type="number" min="" data-scene-field="num_rounds" value="${escapeHtml(scene.num_rounds || "")}" placeholder="type default"></label>
+    </div>
+    <div class="field-label">Participants</div>
+    <div class="checkbox-row">${participantChecks}</div>
+    ${premiseFields}
+    <details>
+      <summary>Exact scene JSON</summary>
+      <textarea class="json-box" id="sceneRaw${index}">${escapeHtml(pretty(scene))}</textarea>
+    </details>
+  </article>`;
+}
+
 function renderSceneEditor() {
   const names = selectedNames();
-  $("sceneListEditor").innerHTML = (draft.scenes || []).map((scene, index) => {
-    const premise = scene.premise || {};
-    const participantChecks = names.map((name) => {
-      const checked = (scene.participants || []).includes(name) ? " checked" : "";
-      return `<label class="checkline"><input type="checkbox" data-scene-participant="${escapeHtml(name)}"${checked}> ${escapeHtml(name)}</label>`;
-    }).join("");
-    const premiseFields = names.map((name) =>
-      `<label>${escapeHtml(name)} Premise<textarea data-scene-premise="${escapeHtml(name)}">${escapeHtml(textFromLines(premise[name]))}</textarea></label>`
-    ).join("");
-    return `<article class="editor-block" data-scene-index="${index}">
-      <div class="block-title">
-        <h3>${escapeHtml(scene.id || `Scene ${index + 1}`)}</h3>
-        <button class="secondary small" data-remove-scene="${index}">Remove</button>
-      </div>
-      <div class="grid scene-grid">
-        <label>Scene ID<input data-scene-field="id" value="${escapeHtml(scene.id || "")}"></label>
-        <label>Type<select data-scene-field="type">${sceneTypeOptions(scene.type)}</select></label>
-        <label>Rounds Override<input type="number" min="" data-scene-field="num_rounds" value="${escapeHtml(scene.num_rounds || "")}" placeholder="type default"></label>
-      </div>
-      <div class="field-label">Participants</div>
-      <div class="checkbox-row">${participantChecks}</div>
-      ${premiseFields}
-      <details>
-        <summary>Exact scene JSON</summary>
-        <textarea class="json-box" id="sceneRaw${index}">${escapeHtml(pretty(scene))}</textarea>
-      </details>
-    </article>`;
-  }).join("");
+  const scenes = draft.scenes || [];
+  const selectedIndex = clampSelectedSceneIndex(scenes);
+  $("sceneSelector").innerHTML = sceneSelectorHtml(scenes, selectedIndex);
+  $("sceneListEditor").innerHTML = scenes.length
+    ? sceneEditorHtml(scenes[selectedIndex], selectedIndex, names)
+    : '<div class="muted">No scenes loaded.</div>';
 }
 
 function renderScenesTab() {
@@ -497,8 +542,8 @@ function hydrateInputs() {
 function collectConfigForm() {
   const raw = parseJsonField("configRawJson", {});
   draft.schema_version = Number($("schemaVersion").value || raw.schema_version || 1);
-  draft.created_at = $("createdAt").value || raw.created_at;
-  draft.updated_at = $("updatedAt").value || raw.updated_at;
+  draft.created_at = raw.created_at ?? draft.created_at;
+  draft.updated_at = raw.updated_at ?? draft.updated_at;
   draft.source_root = $("sourceRootInput").value || raw.source_root || source.starter_root;
   draft.selected_candidate_ids = [$("maleCandidate").value, $("femaleCandidate").value];
   draft.scene_defaults = {
@@ -580,9 +625,18 @@ function collectSceneTypeForms() {
 function collectSceneForms() {
   const blocks = [...document.querySelectorAll("[data-scene-index]")];
   if (!blocks.length) return;
-  draft.scenes = blocks.map((block) => {
+  draft.scenes = applySceneFormBlocks(
+    draft.scenes || [],
+    blocks,
+    (index) => parseJsonField(`sceneRaw${index}`, draft.scenes[index] || {}),
+  );
+}
+
+function applySceneFormBlocks(scenes, blocks, rawSceneForIndex) {
+  const nextScenes = [...scenes];
+  blocks.forEach((block) => {
     const index = Number(block.dataset.sceneIndex);
-    const raw = parseJsonField(`sceneRaw${index}`, draft.scenes[index] || {});
+    const raw = rawSceneForIndex(index);
     const roundsValue = block.querySelector('[data-scene-field="num_rounds"]').value;
     const participants = [...block.querySelectorAll("[data-scene-participant]:checked")]
       .map((input) => input.dataset.sceneParticipant);
@@ -600,8 +654,9 @@ function collectSceneForms() {
     };
     if (roundsValue) scene.num_rounds = Number(roundsValue);
     else delete scene.num_rounds;
-    return scene;
+    nextScenes[index] = scene;
   });
+  return nextScenes;
 }
 
 function collectScenesForms() {
@@ -717,6 +772,7 @@ function renderRecentRuns(runs) {
     $("recentRuns").innerHTML = '<li class="muted">No runs yet.</li>';
     renderCompareOptions(runs);
     renderLogRunOptions(runs);
+    renderCleanDialogueRunOptions(runs);
     return;
   }
   $("recentRuns").innerHTML = runs.map((run) => {
@@ -735,6 +791,7 @@ function renderRecentRuns(runs) {
       <div><strong>${escapeHtml(id)}</strong><div class="muted">${escapeHtml(meta)}</div></div>
       <div class="run-actions">
         <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Inspect</button>
+        <button class="secondary small" data-dialogue-run="${escapeHtml(id)}" type="button">Dialogue</button>
         <button class="secondary small" data-log-run="${escapeHtml(id)}" type="button">Log</button>
         <button class="secondary small" data-compare-left="${escapeHtml(id)}" type="button">Left</button>
         <button class="secondary small" data-compare-right="${escapeHtml(id)}" type="button">Right</button>
@@ -746,6 +803,7 @@ function renderRecentRuns(runs) {
   }).join("");
   renderCompareOptions(runs);
   renderLogRunOptions(runs);
+  renderCleanDialogueRunOptions(runs);
 }
 
 function renderCompareOptions(runs) {
@@ -766,6 +824,20 @@ function renderCompareOptions(runs) {
 
 function renderLogRunOptions(runs) {
   const select = $("logRunSelect");
+  if (!select) return;
+  const previous = select.value;
+  const logRuns = runs.filter((run) => run.artifacts?.structured_log);
+  const options = (logRuns.length ? logRuns : runs).map((run) =>
+    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id)}</option>`
+  ).join("");
+  select.innerHTML = options;
+  if ((logRuns.length ? logRuns : runs).some((run) => run.run_id === previous)) {
+    select.value = previous;
+  }
+}
+
+function renderCleanDialogueRunOptions(runs) {
+  const select = $("cleanDialogueRunSelect");
   if (!select) return;
   const previous = select.value;
   const logRuns = runs.filter((run) => run.artifacts?.structured_log);
@@ -818,6 +890,12 @@ async function loadLog(runId) {
   if (!runId) throw new Error("Choose a run.");
   logsState = await api(`/api/logs/${encodeURIComponent(runId)}`);
   renderLogBrowser();
+}
+
+async function loadCleanDialogue(runId) {
+  if (!runId) throw new Error("Choose a run.");
+  cleanDialogueState = await api(`/api/logs/${encodeURIComponent(runId)}`);
+  renderCleanDialogue();
 }
 
 function logSearchText(entry) {
@@ -928,6 +1006,69 @@ function renderLogArtifactLink(state = logsState) {
     html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">Open saved HTML log viewer</a>` : "",
     json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">Open structured_log.json</a>` : "",
   ].filter(Boolean).join(" | ");
+}
+
+function cleanDialogueText(entry) {
+  return entry?.concordia_event_text || entry?.raw_utterance_text || entry?.action || entry?.preview || "";
+}
+
+function cleanDialogueEntries(state = cleanDialogueState) {
+  return (state?.entries || []).filter((entry) => {
+    const text = cleanDialogueText(entry).trim();
+    if (!text) return false;
+    return entry.entry_type === "entity" || Boolean(entry.raw_utterance_text);
+  });
+}
+
+function cleanDialogueContext(state = cleanDialogueState, status = latestStatus) {
+  const run = (status?.recent_runs || []).find((item) => item.run_id === state?.run_id);
+  return state?.summary || state?.run_context || run?.summary || run?.run_context || {};
+}
+
+function renderCleanDialogue(state = cleanDialogueState) {
+  if (!state) {
+    $("cleanDialogueContext").innerHTML = "";
+    $("cleanDialogueView").innerHTML = '<div class="muted">Choose a run to load its candidate dialogue.</div>';
+    return;
+  }
+  if (!state.available) {
+    $("cleanDialogueMessage").textContent = state.error || "No structured log is available.";
+    $("cleanDialogueMessage").className = "error";
+    $("cleanDialogueContext").innerHTML = "";
+    $("cleanDialogueView").innerHTML = "";
+    return;
+  }
+  $("cleanDialogueMessage").textContent = "";
+  $("cleanDialogueMessage").className = "muted";
+  const context = cleanDialogueContext(state);
+  const contextRows = [
+    ["Run", state.run_id || ""],
+    ["Pair", (context.selected_pair || context.candidates || []).filter(Boolean).join(" vs ")],
+    ["Settings", runContextLabel(context)],
+    ["Scenes", context.scene_count ?? ""],
+  ];
+  $("cleanDialogueContext").innerHTML = `<dl class="status-grid">${contextRows.map(([key, value]) =>
+    `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
+  ).join("")}</dl>`;
+  const entries = cleanDialogueEntries(state);
+  if (!entries.length) {
+    $("cleanDialogueView").innerHTML = '<div class="muted">No candidate dialogue entries found in this run.</div>';
+    return;
+  }
+  $("cleanDialogueView").innerHTML = `<div class="dialogue-list">${entries.map((entry) => {
+    const text = cleanDialogueText(entry);
+    const raw = entry.raw_utterance_text && entry.raw_utterance_text !== text
+      ? `<div class="muted">Raw: ${escapeHtml(entry.raw_utterance_text)}</div>`
+      : "";
+    return `<article class="dialogue-turn">
+      <div class="dialogue-turn-header">
+        <span class="dialogue-speaker">${escapeHtml(entry.entity_name || "Candidate")}</span>
+        <span>Step ${escapeHtml(entry.step ?? "")}</span>
+      </div>
+      <div class="dialogue-text">${escapeHtml(text)}</div>
+      ${raw}
+    </article>`;
+  }).join("")}</div>`;
 }
 
 function renderTextBlock(title, value) {
@@ -1091,8 +1232,9 @@ if (typeof document !== "undefined") {
   const isDraftChangeTarget = (target) => {
     if (target.id === "draftName") return true;
     if (target.id === "candidateSelect") return false;
+    if (target.id === "sceneSelect") return false;
     const panel = target.closest("[data-tab-panel]");
-    return Boolean(panel && panel.dataset.tabPanel !== "logs");
+    return Boolean(panel && !["logs", "dialogue"].includes(panel.dataset.tabPanel));
   };
 
   document.addEventListener("input", (event) => {
@@ -1121,6 +1263,18 @@ if (typeof document !== "undefined") {
       collectCandidateForms();
       selectedCandidateIndex = Number(event.target.value);
       renderCandidatesTab();
+      refreshDirtyState();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("sceneSelector").addEventListener("change", (event) => {
+    if (event.target.id !== "sceneSelect") return;
+    try {
+      collectScenesForms();
+      selectedSceneIndex = Number(event.target.value);
+      renderScenesTab();
       refreshDirtyState();
     } catch (error) {
       setMessage(error.message, true);
@@ -1297,6 +1451,18 @@ if (typeof document !== "undefined") {
         .catch((error) => setLogMessage(error.message, true));
       return;
     }
+    const dialogueRun = event.target.closest("[data-dialogue-run]");
+    if (dialogueRun) {
+      const tab = document.querySelector('[data-tab="dialogue"]');
+      if (tab) tab.click();
+      $("cleanDialogueRunSelect").value = dialogueRun.dataset.dialogueRun;
+      loadCleanDialogue(dialogueRun.dataset.dialogueRun)
+        .catch((error) => {
+          $("cleanDialogueMessage").textContent = error.message;
+          $("cleanDialogueMessage").className = "error";
+        });
+      return;
+    }
     const logEntry = event.target.closest("[data-log-entry]");
     if (logEntry && logsState) {
       logsState.selected_index = Number(logEntry.dataset.logEntry);
@@ -1401,6 +1567,15 @@ if (typeof document !== "undefined") {
     }
   });
 
+  $("loadCleanDialogue").addEventListener("click", async () => {
+    try {
+      await loadCleanDialogue($("cleanDialogueRunSelect").value);
+    } catch (error) {
+      $("cleanDialogueMessage").textContent = error.message;
+      $("cleanDialogueMessage").className = "error";
+    }
+  });
+
   init().catch((error) => setMessage(error.message, true));
 }
 
@@ -1410,7 +1585,11 @@ if (typeof module !== "undefined") {
     mergeSelectionDraft,
     remapSceneForSelection,
     renderCompareSide,
+    renderCleanDialogue,
     stockFlowHelpHtml,
+    cleanDialogueEntries,
+    cleanDialogueText,
+    cleanDialogueContext,
     renderLogBrowser,
     renderTurnDetail,
     formatLogDetails,
@@ -1419,15 +1598,20 @@ if (typeof module !== "undefined") {
     DEFAULT_MODEL_NAME,
     BASIC_ENTITY_HISTORY_LENGTH_FIELDS,
     STOCK_BASIC_ENTITY_COMPONENT_FIELDS,
+    ENTITY_PREFAB_OPTIONS,
     collectHistoryLengthParams,
     collectStockBasicEntityComponentSettings,
     applyCandidateFormBlocks,
+    applySceneFormBlocks,
     candidateEditorHtml,
     candidateSelectorHtml,
     draftFingerprint,
     historyLengthFieldsHtml,
     stockBasicEntityComponentSettings,
     stockBasicEntityComponentTogglesHtml,
+    entityPrefabOptionsHtml,
+    sceneEditorHtml,
+    sceneSelectorHtml,
     logSearchText,
     runContextLabel,
     summarizeDraftContext,
