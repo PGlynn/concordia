@@ -25,6 +25,12 @@ STARTER_ROOT = Path(
 DRAFT_SCHEMA_VERSION = 1
 DEFAULT_API_TYPE = "ollama"
 DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b"
+BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS = {
+    "observation_history_length": 1_000_000,
+    "situation_perception_history_length": 25,
+    "self_perception_history_length": 1_000_000,
+    "person_by_situation_history_length": 5,
+}
 
 
 class DraftValidationError(ValueError):
@@ -92,6 +98,9 @@ def _source_candidates(paths: StarterPaths) -> list[dict[str, Any]]:
   result = []
   for persona in personas.get("contestants", []):
     candidate = copy.deepcopy(by_id[persona["id"]])
+    entity_params = candidate.setdefault("entity_params", {})
+    for key, value in BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS.items():
+      entity_params.setdefault(key, value)
     candidate["source_persona"] = persona
     candidate["gender"] = persona.get("gender", _candidate_gender(candidate))
     candidate["age"] = persona.get("age")

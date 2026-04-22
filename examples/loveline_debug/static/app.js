@@ -10,6 +10,12 @@ let isDirty = false;
 
 const DEFAULT_API_TYPE = "ollama";
 const DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b";
+const BASIC_ENTITY_HISTORY_LENGTH_FIELDS = [
+  ["observation_history_length", "Observation History"],
+  ["situation_perception_history_length", "Situation Perception Memories"],
+  ["self_perception_history_length", "Self Perception Memories"],
+  ["person_by_situation_history_length", "Person by Situation Memories"],
+];
 
 const $ = (id) => document.getElementById(id);
 
@@ -189,6 +195,30 @@ function parseJsonField(id, fallback) {
   return text ? JSON.parse(text) : fallback;
 }
 
+function historyLengthFieldsHtml(params = {}) {
+  return BASIC_ENTITY_HISTORY_LENGTH_FIELDS.map(([key, label]) => {
+    const value = params[key] ?? "";
+    return `<label>${escapeHtml(label)}<input type="number" min="0" step="1" data-candidate-field="${escapeHtml(key)}" value="${escapeHtml(value)}"></label>`;
+  }).join("");
+}
+
+function collectHistoryLengthParams(field, rawParams = {}) {
+  const result = {};
+  BASIC_ENTITY_HISTORY_LENGTH_FIELDS.forEach(([key]) => {
+    const element = field(key);
+    if (!element) return;
+    const value = element.value.trim();
+    if (value === "") {
+      if (Object.prototype.hasOwnProperty.call(rawParams, key)) {
+        result[key] = rawParams[key];
+      }
+      return;
+    }
+    result[key] = Number(value);
+  });
+  return result;
+}
+
 function selectedNames() {
   return (draft?.contestants || []).map((item) => item.name).filter(Boolean);
 }
@@ -248,6 +278,9 @@ function renderCandidatesTab() {
       </div>
       <label>Entity Goal<textarea data-candidate-field="goal">${escapeHtml(params.goal || "")}</textarea></label>
       <label class="checkline"><input data-candidate-field="prefix_entity_name" type="checkbox" ${params.prefix_entity_name ? "checked" : ""}> Prefix entity name</label>
+      <div class="grid two">
+        ${historyLengthFieldsHtml(params)}
+      </div>
       <label>Player Context<textarea class="tall" data-candidate-field="player_specific_context">${escapeHtml(candidate.player_specific_context || "")}</textarea></label>
       <label>Player Memories<textarea data-candidate-field="player_specific_memories">${escapeHtml(textFromLines(candidate.player_specific_memories))}</textarea></label>
       <label>Debug Tags<textarea data-candidate-field="derived_debug_tags">${escapeHtml(textFromLines(candidate.derived_debug_tags))}</textarea></label>
@@ -382,6 +415,7 @@ function collectCandidateForms() {
         name,
         goal: field("goal").value,
         prefix_entity_name: field("prefix_entity_name").checked,
+        ...collectHistoryLengthParams(field, raw.entity_params || {}),
       },
       player_specific_context: field("player_specific_context").value,
       player_specific_memories: linesFromText(field("player_specific_memories").value),
@@ -1235,7 +1269,10 @@ if (typeof module !== "undefined") {
     filteredLogEntries,
     DEFAULT_API_TYPE,
     DEFAULT_MODEL_NAME,
+    BASIC_ENTITY_HISTORY_LENGTH_FIELDS,
+    collectHistoryLengthParams,
     draftFingerprint,
+    historyLengthFieldsHtml,
     logSearchText,
     runContextLabel,
     summarizeDraftContext,

@@ -219,6 +219,95 @@ class RunnerTest(absltest.TestCase):
         }],
     )
 
+  def test_run_thread_passes_history_lengths_through_snapshot_to_config(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    draft = config_io.make_default_draft()
+    draft["contestants"][0]["entity_params"].update({
+        "observation_history_length": 31,
+        "situation_perception_history_length": 32,
+        "self_perception_history_length": 33,
+        "person_by_situation_history_length": 34,
+    })
+    record = runner.RunRecord(
+        run_id="run",
+        status="queued",
+        run_dir=paths.runs_dir / "run",
+        started_at="2026-04-21T00:00:00+00:00",
+    )
+    captured_snapshots = []
+
+    class FakeController:
+
+      def should_stop(self):
+        return False
+
+    class FakeControl:
+
+      step_controller = FakeController()
+
+      def set_simulation(self, sim):
+        self.sim = sim
+
+      def broadcast_entity_info(self, payload):
+        self.entity_info = payload
+
+      def broadcast_completion(self):
+        self.completed = True
+
+    class FakeLog:
+
+      def to_json(self):
+        return "[]"
+
+      def to_html(self):
+        return "<html></html>"
+
+    class FakeSimulation:
+
+      def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+      def make_checkpoint_data(self):
+        return {"entities": {}}
+
+      def play(self, **kwargs):
+        self.play_kwargs = kwargs
+        return FakeLog()
+
+    def fake_build_config(snapshot):
+      captured_snapshots.append(snapshot)
+      return "config"
+
+    original_build_config = runner.config_io.build_config
+    original_visualize = runner.visual_interface.visualize_config_to_html
+    original_simulation = runner.simulation.Simulation
+    runner.config_io.build_config = fake_build_config
+    runner.visual_interface.visualize_config_to_html = lambda *_, **__: ""
+    runner.simulation.Simulation = FakeSimulation
+    try:
+      manager._run_thread(  # pylint: disable=protected-access
+          draft, record, FakeControl()
+      )
+    finally:
+      runner.config_io.build_config = original_build_config
+      runner.visual_interface.visualize_config_to_html = original_visualize
+      runner.simulation.Simulation = original_simulation
+
+    self.assertEqual(record.status, "completed")
+    self.assertEqual(
+        captured_snapshots[0]["contestants"][0]["entity_params"][
+            "observation_history_length"
+        ],
+        31,
+    )
+    self.assertEqual(
+        captured_snapshots[0]["contestants"][0]["entity_params"][
+            "person_by_situation_history_length"
+        ],
+        34,
+    )
+
 
 if __name__ == "__main__":
   absltest.main()
