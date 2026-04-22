@@ -37,6 +37,8 @@ Drafts and run artifacts are written back under:
 - Recent run history with direct artifact links, plus a first-turn side-by-side
   compare over each run's `config_snapshot.json`, `structured_log.json`, and
   `status.json` transcript.
+- Logs tab for choosing recent runs, filtering `structured_log.json` entries,
+  inspecting selected raw JSON, and opening the saved `log.html` viewer.
 
 No Loveline-specific Concordia cognition modules are added here.
 
@@ -87,7 +89,5 @@ generated/loveline_debug/drafts/<draft_name>.json
 
 - Inspect: embed `visual_interface` output and checkpoint component state in the
   right panel instead of only linking the generated config visualization.
-- Logs: embed `concordia/utils/log_viewer.html` and load `structured_log.json`
-  directly from recent runs.
 - Compare: extend the first-turn view into a broader entity action timeline diff
   using `concordia_log.py`/`structured_logging`.

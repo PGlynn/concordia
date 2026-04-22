@@ -59,6 +59,8 @@ class LovelineDebugApp:
             self._send_json(self._compare_runs(parsed))
           elif parsed.path.startswith("/api/inspect/"):
             self._send_json(self._inspect_run(parsed))
+          elif parsed.path.startswith("/api/logs/"):
+            self._send_json(self._load_log(parsed))
           elif parsed.path.startswith("/artifacts/"):
             self._serve_artifact(parsed.path.removeprefix("/artifacts/"))
           else:
@@ -148,6 +150,12 @@ class LovelineDebugApp:
                 self._run_dir(left),
                 self._run_dir(right),
             )
+        )
+
+      def _load_log(self, parsed: parse.ParseResult) -> dict[str, Any]:
+        run_id = parse.unquote(parsed.path.removeprefix("/api/logs/"))
+        return inspector.json_safe(
+            inspector.load_log_browser(self._run_dir(run_id))
         )
 
       def _run_dir(self, run_id: str) -> Path:

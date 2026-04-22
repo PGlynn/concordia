@@ -69,6 +69,38 @@ def load_turn_inspector(
   }
 
 
+def load_log_browser(run_dir: Path) -> dict[str, Any]:
+  """Returns a readable browser view over existing structured_log.json."""
+  log_path = run_dir / "structured_log.json"
+  html_path = run_dir / "log.html"
+  if not log_path.exists():
+    return {
+        "run_id": run_dir.name,
+        "available": False,
+        "error": "structured_log.json is not available for this run.",
+        "entries": [],
+        "artifacts": _log_artifacts(run_dir),
+      }
+
+  log = structured_logging.SimulationLog.from_json(
+      log_path.read_text(encoding="utf-8")
+  )
+  entries = [
+      _log_browser_entry(log, index, entry)
+      for index, entry in enumerate(log.entries)
+  ]
+  return {
+      "run_id": run_dir.name,
+      "available": True,
+      "entry_count": len(entries),
+      "entries": entries,
+      "artifacts": {
+          **_log_artifacts(run_dir),
+          **({"html_log": str(html_path)} if html_path.exists() else {}),
+      },
+  }
+
+
 def load_first_turn_compare(left_run_dir: Path, right_run_dir: Path) -> dict[str, Any]:
   """Builds a side-by-side first-turn compare from existing run artifacts."""
   left = _compare_side(left_run_dir)
@@ -84,6 +116,58 @@ def load_first_turn_compare(left_run_dir: Path, right_run_dir: Path) -> dict[str
           "status.json transcript",
       ],
   }
+
+
+def _log_browser_entry(
+    log: structured_logging.SimulationLog,
+    index: int,
+    entry: structured_logging.StructuredLogEntry,
+) -> dict[str, Any]:
+  raw_data = log.reconstruct_value(entry.deduplicated_data)
+  preview = _entry_preview(raw_data) or entry.summary
+  return {
+      "index": index,
+      "step": entry.step,
+      "timestamp": entry.timestamp,
+      "entity_name": entry.entity_name,
+      "component_name": entry.component_name,
+      "entry_type": entry.entry_type,
+      "summary": entry.summary,
+      "preview": preview,
+      "raw_entry": {
+          "step": entry.step,
+          "timestamp": entry.timestamp,
+          "entity_name": entry.entity_name,
+          "component_name": entry.component_name,
+          "entry_type": entry.entry_type,
+          "summary": entry.summary,
+          "data": raw_data,
+      },
+  }
+
+
+def _entry_preview(value: Any) -> str:
+  if isinstance(value, dict):
+    for key in ("Value", "Summary", "Prompt", "value", "summary", "prompt"):
+      if key in value:
+        return _entry_preview(value[key])
+    nested = value.get("value")
+    if isinstance(nested, dict):
+      for component_data in nested.values():
+        preview = _entry_preview(component_data)
+        if preview:
+          return preview
+    for component_data in value.values():
+      preview = _entry_preview(component_data)
+      if preview:
+        return preview
+    return ""
+  if isinstance(value, list):
+    parts = [_entry_preview(item) for item in value[:3]]
+    return " | ".join(part for part in parts if part)
+  if value is None:
+    return ""
+  return str(value)
 
 
 def _inspectable_entries(
@@ -306,6 +390,18 @@ def _artifact_summary(run_dir: Path) -> dict[str, str]:
     path = run_dir / filename
     if path.exists():
       artifacts[name] = str(path)
+  return artifacts
+
+
+def _log_artifacts(run_dir: Path) -> dict[str, str]:
+  artifacts = {}
+  for key, filename in (
+      ("structured_log", "structured_log.json"),
+      ("html_log", "log.html"),
+  ):
+    path = run_dir / filename
+    if path.exists():
+      artifacts[key] = str(path)
   return artifacts
 
 

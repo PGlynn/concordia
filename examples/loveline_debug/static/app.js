@@ -4,6 +4,7 @@ let activeTab = "config";
 let latestStatus = null;
 let inspectorState = null;
 let compareState = null;
+let logsState = null;
 let cleanDraftJson = "";
 let isDirty = false;
 
@@ -531,6 +532,11 @@ function setCompareMessage(text, isError = false) {
   $("compareMessage").className = isError ? "error" : "muted";
 }
 
+function setLogMessage(text, isError = false) {
+  $("logMessage").textContent = text;
+  $("logMessage").className = isError ? "error" : "muted";
+}
+
 function artifactRel(path) {
   return path ? path.split("/runs/").pop() : null;
 }
@@ -539,6 +545,7 @@ function renderRecentRuns(runs) {
   if (!runs.length) {
     $("recentRuns").innerHTML = '<li class="muted">No runs yet.</li>';
     renderCompareOptions(runs);
+    renderLogRunOptions(runs);
     return;
   }
   $("recentRuns").innerHTML = runs.map((run) => {
@@ -557,6 +564,7 @@ function renderRecentRuns(runs) {
       <div><strong>${escapeHtml(id)}</strong><div class="muted">${escapeHtml(meta)}</div></div>
       <div class="run-actions">
         <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Inspect</button>
+        <button class="secondary small" data-log-run="${escapeHtml(id)}" type="button">Log</button>
         <button class="secondary small" data-compare-left="${escapeHtml(id)}" type="button">Left</button>
         <button class="secondary small" data-compare-right="${escapeHtml(id)}" type="button">Right</button>
         ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
@@ -566,6 +574,7 @@ function renderRecentRuns(runs) {
     </li>`;
   }).join("");
   renderCompareOptions(runs);
+  renderLogRunOptions(runs);
 }
 
 function renderCompareOptions(runs) {
@@ -581,6 +590,20 @@ function renderCompareOptions(runs) {
   if (!$("compareLeft").value && runs[0]) $("compareLeft").value = runs[0].run_id;
   if ((!$("compareRight").value || $("compareRight").value === $("compareLeft").value) && runs[1]) {
     $("compareRight").value = runs[1].run_id;
+  }
+}
+
+function renderLogRunOptions(runs) {
+  const select = $("logRunSelect");
+  if (!select) return;
+  const previous = select.value;
+  const logRuns = runs.filter((run) => run.artifacts?.structured_log);
+  const options = (logRuns.length ? logRuns : runs).map((run) =>
+    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id)}</option>`
+  ).join("");
+  select.innerHTML = options;
+  if ((logRuns.length ? logRuns : runs).some((run) => run.run_id === previous)) {
+    select.value = previous;
   }
 }
 
@@ -618,6 +641,93 @@ function renderInspector() {
     return;
   }
   $("turnInspector").innerHTML = renderTurnDetail(selected);
+}
+
+async function loadLog(runId) {
+  if (!runId) throw new Error("Choose a run.");
+  logsState = await api(`/api/logs/${encodeURIComponent(runId)}`);
+  renderLogBrowser();
+}
+
+function logSearchText(entry) {
+  return [
+    entry.index,
+    entry.step,
+    entry.timestamp,
+    entry.entity_name,
+    entry.component_name,
+    entry.entry_type,
+    entry.summary,
+    entry.preview,
+    displayValue(entry.raw_entry),
+  ].join(" ").toLowerCase();
+}
+
+function filteredLogEntries(
+  state = logsState,
+  filterText = $("logFilter")?.value || ""
+) {
+  const entries = state?.entries || [];
+  const query = filterText.trim().toLowerCase();
+  if (!query) return entries;
+  return entries.filter((entry) => logSearchText(entry).includes(query));
+}
+
+function renderLogBrowser(state = logsState) {
+  if (!state) {
+    $("logEntries").innerHTML = '<div class="muted">Choose a run to load its saved structured log.</div>';
+    $("logDetails").textContent = "No entry selected.";
+    return;
+  }
+  if (!state.available) {
+    setLogMessage(state.error || "No structured log is available.", true);
+    $("logEntries").innerHTML = "";
+    $("logDetails").textContent = "No entry selected.";
+    renderLogArtifactLink(state);
+    return;
+  }
+  const entries = filteredLogEntries(state);
+  let selectedIndex = state.selected_index ?? entries[0]?.index;
+  if (!entries.some((entry) => entry.index === selectedIndex)) {
+    selectedIndex = entries[0]?.index;
+  }
+  if (state.selected_index === undefined && selectedIndex !== undefined) {
+    state.selected_index = selectedIndex;
+  }
+  setLogMessage(
+    `${entries.length} of ${state.entry_count ?? state.entries.length} entries shown.`
+  );
+  renderLogArtifactLink(state);
+  if (!entries.length) {
+    $("logEntries").innerHTML = '<div class="muted">No entries match the filter.</div>';
+    $("logDetails").textContent = "No entry selected.";
+    return;
+  }
+  $("logEntries").innerHTML = `<table class="log-table">
+    <thead><tr><th>#</th><th>Step</th><th>Type</th><th>Entity</th><th>Component</th><th>Summary</th></tr></thead>
+    <tbody>${entries.map((entry) => {
+      const selected = entry.index === selectedIndex ? " selected" : "";
+      return `<tr class="${selected}" data-log-entry="${escapeHtml(entry.index)}">
+        <td>${escapeHtml(entry.index)}</td>
+        <td>${escapeHtml(entry.step)}</td>
+        <td>${escapeHtml(entry.entry_type)}</td>
+        <td>${escapeHtml(entry.entity_name)}</td>
+        <td>${escapeHtml(entry.component_name)}</td>
+        <td class="log-summary"><strong>${escapeHtml(entry.summary || "")}</strong><br><span class="muted">${escapeHtml(entry.preview || "")}</span></td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table>`;
+  const selected = state.entries.find((entry) => entry.index === selectedIndex) || entries[0];
+  $("logDetails").textContent = pretty(selected?.raw_entry || selected || {});
+}
+
+function renderLogArtifactLink(state = logsState) {
+  const html = artifactRel(state?.artifacts?.html_log);
+  const json = artifactRel(state?.artifacts?.structured_log);
+  $("logArtifactLink").innerHTML = [
+    html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">Open saved HTML log viewer</a>` : "",
+    json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">Open structured_log.json</a>` : "",
+  ].filter(Boolean).join(" | ");
 }
 
 function renderTextBlock(title, value) {
@@ -749,13 +859,23 @@ async function init() {
 }
 
 if (typeof document !== "undefined") {
+  const isDraftChangeTarget = (target) => {
+    if (target.id === "draftName") return true;
+    const panel = target.closest("[data-tab-panel]");
+    return Boolean(panel && panel.dataset.tabPanel !== "logs");
+  };
+
   document.addEventListener("input", (event) => {
-    if (event.target.id === "draftName" || event.target.closest("[data-tab-panel]")) {
+    if (event.target.id === "logFilter") {
+      renderLogBrowser();
+      return;
+    }
+    if (isDraftChangeTarget(event.target)) {
       markDirty();
     }
   });
   document.addEventListener("change", (event) => {
-    if (event.target.id === "draftName" || event.target.closest("[data-tab-panel]")) {
+    if (isDraftChangeTarget(event.target)) {
       markDirty();
     }
   });
@@ -926,6 +1046,21 @@ if (typeof document !== "undefined") {
         .catch((error) => setInspectorMessage(error.message, true));
       return;
     }
+    const logRun = event.target.closest("[data-log-run]");
+    if (logRun) {
+      const tab = document.querySelector('[data-tab="logs"]');
+      if (tab) tab.click();
+      $("logRunSelect").value = logRun.dataset.logRun;
+      loadLog(logRun.dataset.logRun)
+        .catch((error) => setLogMessage(error.message, true));
+      return;
+    }
+    const logEntry = event.target.closest("[data-log-entry]");
+    if (logEntry && logsState) {
+      logsState.selected_index = Number(logEntry.dataset.logEntry);
+      renderLogBrowser();
+      return;
+    }
     const compareLeft = event.target.closest("[data-compare-left]");
     if (compareLeft) {
       $("compareLeft").value = compareLeft.dataset.compareLeft;
@@ -1016,6 +1151,14 @@ if (typeof document !== "undefined") {
     }
   });
 
+  $("loadLog").addEventListener("click", async () => {
+    try {
+      await loadLog($("logRunSelect").value);
+    } catch (error) {
+      setLogMessage(error.message, true);
+    }
+  });
+
   init().catch((error) => setMessage(error.message, true));
 }
 
@@ -1025,8 +1168,11 @@ if (typeof module !== "undefined") {
     mergeSelectionDraft,
     remapSceneForSelection,
     renderCompareSide,
+    renderLogBrowser,
     renderTurnDetail,
+    filteredLogEntries,
     draftFingerprint,
+    logSearchText,
     runContextLabel,
     summarizeDraftContext,
   };

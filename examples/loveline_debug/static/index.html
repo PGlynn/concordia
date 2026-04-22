@@ -215,6 +215,43 @@
       padding-top: 10px;
       margin-top: 10px;
     }
+    .log-toolbar {
+      display: grid;
+      grid-template-columns: minmax(160px, 260px) minmax(180px, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+    .log-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .log-table th, .log-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 7px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .log-table th { color: var(--muted); font-weight: 650; }
+    .log-table tr { cursor: pointer; }
+    .log-table tr.selected { background: #ecfdf5; }
+    .log-summary {
+      max-width: 420px;
+      overflow-wrap: anywhere;
+    }
+    #logDetails {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #f1f5f9;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 8px;
+      max-height: 360px;
+      overflow: auto;
+    }
     .error { color: var(--bad); font-weight: 650; }
     .muted { color: var(--muted); overflow-wrap: anywhere; }
     .dirty { color: var(--warn); font-weight: 650; }
@@ -229,6 +266,7 @@
       main { grid-template-columns: 1fr; height: auto; overflow: visible; }
       section { border-right: 0; border-bottom: 1px solid var(--line); }
       .grid.two, .grid.scene-grid, .grid.type-grid, .compare-grid { grid-template-columns: 1fr; }
+      .log-toolbar { grid-template-columns: 1fr; }
       header { align-items: stretch; flex-direction: column; gap: 10px; }
     }
   </style>
@@ -276,6 +314,7 @@
         <button data-tab="candidates">Candidates</button>
         <button data-tab="scenes">Scenes</button>
         <button data-tab="snapshot">Snapshot</button>
+        <button data-tab="logs">Logs</button>
       </div>
 
       <div data-tab-panel="config" id="tabConfig">
@@ -347,6 +386,19 @@
       <div data-tab-panel="snapshot" id="tabSnapshot" style="display:none">
         <h2>Full Draft Snapshot</h2>
         <textarea id="snapshotJson"></textarea>
+      </div>
+
+      <div data-tab-panel="logs" id="tabLogs" style="display:none">
+        <div class="log-toolbar">
+          <label>Run<select id="logRunSelect"></select></label>
+          <label>Filter<input id="logFilter" placeholder="Search step, entity, component, summary, raw JSON"></label>
+          <button id="loadLog" class="secondary" type="button">Load Log</button>
+        </div>
+        <div id="logMessage" class="muted"></div>
+        <div id="logArtifactLink" class="muted"></div>
+        <div id="logEntries"></div>
+        <h2>Selected Entry</h2>
+        <pre id="logDetails">No entry selected.</pre>
       </div>
     </section>
     <section>

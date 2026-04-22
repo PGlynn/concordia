@@ -88,6 +88,42 @@ class InspectorTest(unittest.TestCase):
     self.assertEqual(payload["run_id"], run_dir.name)
     self.assertEqual(payload["entries"], [])
 
+  def test_load_log_browser_returns_reconstructed_entries_and_artifacts(self):
+    run_dir = Path(tempfile.mkdtemp()) / "run_with_log"
+    run_dir.mkdir()
+    log = structured_logging.SimulationLog()
+    log.add_entry(
+        step=1,
+        timestamp="2026-04-21T22:00:00+00:00",
+        entity_name="Alex",
+        component_name="entity_action",
+        entry_type="entity",
+        summary="Alex speaks",
+        raw_data={
+            "key": "Entity [Alex]",
+            "value": {
+                "__act__": {
+                    "Summary": "Action: Alex speaks",
+                    "Value": "This answer is intentionally long enough to be deduplicated and reconstructed.",
+                },
+            },
+        },
+    )
+    (run_dir / "structured_log.json").write_text(log.to_json(), encoding="utf-8")
+    (run_dir / "log.html").write_text("<html>log</html>", encoding="utf-8")
+
+    payload = inspector.load_log_browser(run_dir)
+
+    self.assertTrue(payload["available"])
+    self.assertEqual(payload["entry_count"], 1)
+    self.assertEqual(payload["entries"][0]["entity_name"], "Alex")
+    self.assertIn("deduplicated and reconstructed", payload["entries"][0]["preview"])
+    raw_value = payload["entries"][0]["raw_entry"]["data"]["value"]["__act__"][
+        "Value"
+    ]
+    self.assertIn("intentionally long enough", raw_value)
+    self.assertEqual(payload["artifacts"]["html_log"], str(run_dir / "log.html"))
+
   def test_load_first_turn_compare_uses_run_artifacts(self):
     left_dir = Path(tempfile.mkdtemp()) / "left_run"
     right_dir = Path(tempfile.mkdtemp()) / "right_run"
