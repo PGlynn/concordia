@@ -66,6 +66,15 @@ model-backed fields to Loveline's local starter stack: `API Type` is `ollama`
 and `Model` is `qwen3.5:35b-a3b`. Uncheck `Disable language model` when you
 want a full local model-backed run.
 
+For `API Type` `ollama`, this debug UI uses a Loveline-local Ollama shim under
+`examples/loveline_debug` instead of changing Concordia's shared Ollama model.
+The shim keeps the same provider/model selection, passes `think=False` for text
+and choice generation, forwards stop tokens, and maps practical request controls
+such as `max_tokens` and `seed` into Ollama request options. It also keeps the
+local Loveline adapter's in-world prompting, response cleanup, and numbered JSON
+choice parsing. Non-Ollama providers continue to use Concordia's stock
+`language_model_setup`.
+
 ## Artifact Layout
 
 Each run creates:

@@ -135,12 +135,14 @@ class RunnerTest(absltest.TestCase):
       calls.append(kwargs)
       return object()
 
-    original_setup = runner.language_models.language_model_setup
-    runner.language_models.language_model_setup = fake_setup
+    original_setup = runner.language_model_setup.setup
+    runner.language_model_setup.setup = fake_setup
     try:
-      manager._build_model({"disable_language_model": False})  # pylint: disable=protected-access
+      manager._build_model(  # pylint: disable=protected-access
+          {"disable_language_model": False}
+      )
     finally:
-      runner.language_models.language_model_setup = original_setup
+      runner.language_model_setup.setup = original_setup
 
     self.assertEqual(calls, [{
         "api_type": "ollama",
@@ -148,6 +150,74 @@ class RunnerTest(absltest.TestCase):
         "api_key": None,
         "disable_language_model": False,
     }])
+
+  def test_model_builder_uses_loveline_ollama_shim_for_ollama(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    calls = []
+
+    class FakeLovelineOllama:
+
+      def __init__(self, **kwargs):
+        calls.append(kwargs)
+
+    original_cls = (
+        runner.language_model_setup.ollama_shim.LovelineOllamaLanguageModel
+    )
+    runner.language_model_setup.ollama_shim.LovelineOllamaLanguageModel = (
+        FakeLovelineOllama
+    )
+    try:
+      model = manager._build_model({  # pylint: disable=protected-access
+          "disable_language_model": False,
+          "api_type": "ollama",
+          "model_name": "qwen3.5:35b-a3b",
+      })
+    finally:
+      runner.language_model_setup.ollama_shim.LovelineOllamaLanguageModel = (
+          original_cls
+      )
+
+    self.assertIsInstance(model, FakeLovelineOllama)
+    self.assertEqual(calls, [{"model_name": "qwen3.5:35b-a3b"}])
+
+  def test_model_builder_uses_stock_setup_for_non_ollama(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    calls = []
+
+    def fake_stock_setup(**kwargs):
+      calls.append(kwargs)
+      return "stock-model"
+
+    original_setup = (
+        runner.language_model_setup.language_models.language_model_setup
+    )
+    runner.language_model_setup.language_models.language_model_setup = (
+        fake_stock_setup
+    )
+    try:
+      model = manager._build_model({  # pylint: disable=protected-access
+          "disable_language_model": False,
+          "api_type": "openai",
+          "model_name": "gpt-test",
+          "api_key": "key",
+      })
+    finally:
+      runner.language_model_setup.language_models.language_model_setup = (
+          original_setup
+      )
+
+    self.assertEqual(model, "stock-model")
+    self.assertEqual(
+        calls,
+        [{
+            "api_type": "openai",
+            "model_name": "gpt-test",
+            "api_key": "key",
+            "disable_language_model": False,
+        }],
+    )
 
 
 if __name__ == "__main__":

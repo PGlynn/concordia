@@ -11,13 +11,13 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from concordia.contrib import language_models
 from concordia.language_model import no_language_model
 from concordia.prefabs.simulation import generic as simulation
 from concordia.utils import simulation_server
 from concordia.utils import visual_interface
 
 from examples.loveline_debug import config_io
+from examples.loveline_debug import language_model_setup
 
 
 @dataclasses.dataclass
@@ -215,7 +215,7 @@ class RunManager:
   def _build_model(self, run_settings: dict[str, Any]):
     if run_settings.get("disable_language_model", True):
       return no_language_model.NoLanguageModel()
-    return language_models.language_model_setup(
+    return language_model_setup.setup(
         api_type=run_settings.get("api_type") or config_io.DEFAULT_API_TYPE,
         model_name=run_settings.get("model_name") or config_io.DEFAULT_MODEL_NAME,
         api_key=run_settings.get("api_key") or None,
