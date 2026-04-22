@@ -219,7 +219,7 @@ class RunnerTest(absltest.TestCase):
         }],
     )
 
-  def test_run_thread_passes_history_lengths_through_snapshot_to_config(self):
+  def test_run_thread_passes_entity_controls_through_snapshot_to_config(self):
     paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
     manager = runner.RunManager(paths)
     draft = config_io.make_default_draft()
@@ -228,6 +228,11 @@ class RunnerTest(absltest.TestCase):
         "situation_perception_history_length": 32,
         "self_perception_history_length": 33,
         "person_by_situation_history_length": 34,
+        "stock_basic_entity_components": {
+            "SituationPerception": False,
+            "SelfPerception": True,
+            "PersonBySituation": False,
+        },
     })
     record = runner.RunRecord(
         run_id="run",
@@ -306,6 +311,16 @@ class RunnerTest(absltest.TestCase):
             "person_by_situation_history_length"
         ],
         34,
+    )
+    self.assertEqual(
+        captured_snapshots[0]["contestants"][0]["entity_params"][
+            "stock_basic_entity_components"
+        ],
+        {
+            "SituationPerception": False,
+            "SelfPerception": True,
+            "PersonBySituation": False,
+        },
     )
 
 

@@ -16,6 +16,11 @@ const BASIC_ENTITY_HISTORY_LENGTH_FIELDS = [
   ["self_perception_history_length", "Self Perception Memories"],
   ["person_by_situation_history_length", "Person by Situation Memories"],
 ];
+const STOCK_BASIC_ENTITY_COMPONENT_FIELDS = [
+  ["SituationPerception", "Situation Perception"],
+  ["SelfPerception", "Self Perception"],
+  ["PersonBySituation", "Person by Situation"],
+];
 
 const $ = (id) => document.getElementById(id);
 
@@ -202,6 +207,31 @@ function historyLengthFieldsHtml(params = {}) {
   }).join("");
 }
 
+function stockBasicEntityComponentSettings(params = {}) {
+  const raw = params.stock_basic_entity_components || {};
+  return STOCK_BASIC_ENTITY_COMPONENT_FIELDS.reduce((result, [key]) => {
+    result[key] = raw[key] !== false;
+    return result;
+  }, {});
+}
+
+function stockBasicEntityComponentTogglesHtml(params = {}) {
+  const settings = stockBasicEntityComponentSettings(params);
+  return STOCK_BASIC_ENTITY_COMPONENT_FIELDS.map(([key, label]) =>
+    `<label class="checkline"><input type="checkbox" data-candidate-field="${escapeHtml(key)}" ${settings[key] ? "checked" : ""}> ${escapeHtml(label)}</label>`
+  ).join("");
+}
+
+function collectStockBasicEntityComponentSettings(field, rawParams = {}) {
+  const raw = rawParams.stock_basic_entity_components || {};
+  const result = {};
+  STOCK_BASIC_ENTITY_COMPONENT_FIELDS.forEach(([key]) => {
+    const element = field(key);
+    result[key] = element ? element.checked : raw[key] !== false;
+  });
+  return result;
+}
+
 function collectHistoryLengthParams(field, rawParams = {}) {
   const result = {};
   BASIC_ENTITY_HISTORY_LENGTH_FIELDS.forEach(([key]) => {
@@ -278,6 +308,8 @@ function renderCandidatesTab() {
       </div>
       <label>Entity Goal<textarea data-candidate-field="goal">${escapeHtml(params.goal || "")}</textarea></label>
       <label class="checkline"><input data-candidate-field="prefix_entity_name" type="checkbox" ${params.prefix_entity_name ? "checked" : ""}> Prefix entity name</label>
+      <div class="field-label">Stock basic__Entity Questions</div>
+      <div class="checkbox-row">${stockBasicEntityComponentTogglesHtml(params)}</div>
       <div class="grid two">
         ${historyLengthFieldsHtml(params)}
       </div>
@@ -415,6 +447,10 @@ function collectCandidateForms() {
         name,
         goal: field("goal").value,
         prefix_entity_name: field("prefix_entity_name").checked,
+        stock_basic_entity_components: collectStockBasicEntityComponentSettings(
+          field,
+          raw.entity_params || {},
+        ),
         ...collectHistoryLengthParams(field, raw.entity_params || {}),
       },
       player_specific_context: field("player_specific_context").value,
@@ -1270,9 +1306,13 @@ if (typeof module !== "undefined") {
     DEFAULT_API_TYPE,
     DEFAULT_MODEL_NAME,
     BASIC_ENTITY_HISTORY_LENGTH_FIELDS,
+    STOCK_BASIC_ENTITY_COMPONENT_FIELDS,
     collectHistoryLengthParams,
+    collectStockBasicEntityComponentSettings,
     draftFingerprint,
     historyLengthFieldsHtml,
+    stockBasicEntityComponentSettings,
+    stockBasicEntityComponentTogglesHtml,
     logSearchText,
     runContextLabel,
     summarizeDraftContext,

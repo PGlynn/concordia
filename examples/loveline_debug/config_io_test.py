@@ -4,8 +4,16 @@ from pathlib import Path
 
 from absl.testing import absltest
 
+from concordia.associative_memory import basic_associative_memory
+from concordia.language_model import no_language_model
 from concordia.typing import prefab as prefab_lib
+from examples.loveline_debug import basic_entity_controls
 from examples.loveline_debug import config_io
+
+
+def _embedder(text: str):
+  del text
+  return [0.0, 0.0, 0.0]
 
 
 class ConfigIoTest(absltest.TestCase):
@@ -36,6 +44,15 @@ class ConfigIoTest(absltest.TestCase):
           contestant["entity_params"],
       )
 
+  def test_default_draft_exposes_stock_basic_entity_component_toggles(self):
+    draft = config_io.make_default_draft()
+
+    for contestant in draft["contestants"]:
+      self.assertEqual(
+          contestant["entity_params"]["stock_basic_entity_components"],
+          config_io.STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS,
+      )
+
   def test_build_config_uses_stock_roles_and_two_entities(self):
     draft = config_io.make_default_draft()
 
@@ -63,6 +80,9 @@ class ConfigIoTest(absltest.TestCase):
     )
     self.assertIn("dialogic_and_dramaturgic__GameMaster", config.prefabs)
     self.assertIn("formative_memories_initializer__GameMaster", config.prefabs)
+    self.assertIsInstance(
+        config.prefabs["basic__Entity"], basic_entity_controls.Entity
+    )
 
   def test_history_lengths_persist_through_draft_json_and_config_params(self):
     draft = config_io.make_default_draft()
@@ -90,6 +110,67 @@ class ConfigIoTest(absltest.TestCase):
     self.assertEqual(
         entity_instances[0].params,
         loaded["contestants"][0]["entity_params"],
+    )
+
+  def test_component_toggles_persist_through_draft_json_and_config_params(self):
+    draft = config_io.make_default_draft()
+    draft["contestants"][0]["entity_params"][
+        "stock_basic_entity_components"
+    ] = {
+        "SituationPerception": False,
+        "SelfPerception": True,
+        "PersonBySituation": False,
+    }
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    config_io.save_draft(draft, "component_toggles", paths)
+    loaded = config_io.load_draft("component_toggles", paths)
+    config = config_io.build_config(loaded)
+
+    entity_instances = [
+        item for item in config.instances if item.role == prefab_lib.Role.ENTITY
+    ]
+    self.assertEqual(
+        entity_instances[0].params["stock_basic_entity_components"],
+        {
+            "SituationPerception": False,
+            "SelfPerception": True,
+            "PersonBySituation": False,
+        },
+    )
+
+  def test_debug_basic_entity_build_omits_disabled_question_components(self):
+    entity_config = basic_entity_controls.Entity(
+        params={
+            "name": "Alex",
+            "stock_basic_entity_components": {
+                "SituationPerception": False,
+                "SelfPerception": True,
+                "PersonBySituation": False,
+            },
+        }
+    )
+
+    entity = entity_config.build(
+        model=no_language_model.NoLanguageModel(),
+        memory_bank=basic_associative_memory.AssociativeMemoryBank(
+            sentence_embedder=_embedder
+        ),
+    )
+
+    components = entity.get_all_context_components()
+    self.assertNotIn("SituationPerception", components)
+    self.assertIn("SelfPerception", components)
+    self.assertNotIn("PersonBySituation", components)
+    self.assertEqual(
+        entity.get_act_component().get_context_concat_order(),
+        (
+            "Instructions",
+            "Observation",
+            "SelfPerception",
+            "__observation__",
+            "__memory__",
+        ),
     )
 
   def test_rejects_two_candidates_with_same_gender(self):

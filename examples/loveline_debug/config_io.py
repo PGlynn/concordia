@@ -17,6 +17,7 @@ from concordia.prefabs.game_master import formative_memories_initializer
 from concordia.typing import entity as entity_lib
 from concordia.typing import prefab as prefab_lib
 from concordia.typing import scene as scene_lib
+from examples.loveline_debug import basic_entity_controls
 
 
 STARTER_ROOT = Path(
@@ -31,6 +32,9 @@ BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS = {
     "self_perception_history_length": 1_000_000,
     "person_by_situation_history_length": 5,
 }
+STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS = (
+    basic_entity_controls.STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS
+)
 
 
 class DraftValidationError(ValueError):
@@ -101,6 +105,12 @@ def _source_candidates(paths: StarterPaths) -> list[dict[str, Any]]:
     entity_params = candidate.setdefault("entity_params", {})
     for key, value in BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS.items():
       entity_params.setdefault(key, value)
+    component_cfg = entity_params.setdefault("stock_basic_entity_components", {})
+    if not isinstance(component_cfg, dict):
+      component_cfg = {}
+      entity_params["stock_basic_entity_components"] = component_cfg
+    for key, value in STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS.items():
+      component_cfg.setdefault(key, value)
     candidate["source_persona"] = persona
     candidate["gender"] = persona.get("gender", _candidate_gender(candidate))
     candidate["age"] = persona.get("age")
@@ -320,7 +330,7 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
   )
   return prefab_lib.Config(
       prefabs={
-          "basic__Entity": entity_prefabs.basic.Entity(),
+          "basic__Entity": basic_entity_controls.Entity(),
           "basic_with_plan__Entity": entity_prefabs.basic_with_plan.Entity(),
           "conversational__Entity": entity_prefabs.conversational.Entity(),
           "dialogic_and_dramaturgic__GameMaster": (
