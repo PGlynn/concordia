@@ -7,6 +7,7 @@ let compareState = null;
 let logsState = null;
 let cleanDraftJson = "";
 let isDirty = false;
+let selectedCandidateIndex = 0;
 
 const DEFAULT_API_TYPE = "ollama";
 const DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b";
@@ -357,9 +358,34 @@ function renderConfigTab() {
 }
 
 function renderCandidatesTab() {
-  $("candidateEditor").innerHTML = (draft.contestants || []).map((candidate, index) => {
-    const params = candidate.entity_params || {};
-    return `<article class="editor-block" data-candidate-index="${index}">
+  const contestants = draft.contestants || [];
+  const selectedIndex = clampSelectedCandidateIndex(contestants);
+  $("candidateSelector").innerHTML = candidateSelectorHtml(contestants, selectedIndex);
+  $("candidateEditor").innerHTML = contestants.length
+    ? candidateEditorHtml(contestants[selectedIndex], selectedIndex)
+    : '<div class="muted">No candidates loaded.</div>';
+  $("contestantsJson").value = pretty(contestants);
+}
+
+function clampSelectedCandidateIndex(contestants = draft?.contestants || []) {
+  const maxIndex = Math.max(contestants.length - 1, 0);
+  selectedCandidateIndex = Math.min(Math.max(Number(selectedCandidateIndex) || 0, 0), maxIndex);
+  return selectedCandidateIndex;
+}
+
+function candidateSelectorHtml(contestants, selectedIndex) {
+  if (!contestants.length) return "";
+  const options = contestants.map((candidate, index) => {
+    const label = candidate.name || `Candidate ${index + 1}`;
+    const selected = index === selectedIndex ? " selected" : "";
+    return `<option value="${index}"${selected}>${escapeHtml(label)}</option>`;
+  }).join("");
+  return `<label>Candidate<select id="candidateSelect">${options}</select></label>`;
+}
+
+function candidateEditorHtml(candidate, index) {
+  const params = candidate.entity_params || {};
+  return `<article class="editor-block" data-candidate-index="${index}">
       <div class="block-title">
         <h3>${escapeHtml(candidate.name || `Candidate ${index + 1}`)}</h3>
         <span class="pill">${escapeHtml(candidate.gender || "candidate")}</span>
@@ -385,8 +411,6 @@ function renderCandidatesTab() {
         <textarea class="json-box" id="candidateRaw${index}">${escapeHtml(pretty(candidate))}</textarea>
       </details>
     </article>`;
-  }).join("");
-  $("contestantsJson").value = pretty(draft.contestants || []);
 }
 
 function sceneTypeOptions(selectedType) {
@@ -496,12 +520,21 @@ function collectConfigForm() {
 function collectCandidateForms() {
   const blocks = [...document.querySelectorAll("[data-candidate-index]")];
   if (!blocks.length) return;
-  draft.contestants = blocks.map((block) => {
+  draft.contestants = applyCandidateFormBlocks(
+    draft.contestants || [],
+    blocks,
+    (index) => parseJsonField(`candidateRaw${index}`, draft.contestants[index] || {}),
+  );
+}
+
+function applyCandidateFormBlocks(contestants, blocks, rawCandidateForIndex) {
+  const nextContestants = [...contestants];
+  blocks.forEach((block) => {
     const index = Number(block.dataset.candidateIndex);
-    const raw = parseJsonField(`candidateRaw${index}`, draft.contestants[index] || {});
+    const raw = rawCandidateForIndex(index);
     const field = (name) => block.querySelector(`[data-candidate-field="${name}"]`);
     const name = field("name").value;
-    const candidate = {
+    nextContestants[index] = {
       ...raw,
       id: field("id").value,
       name,
@@ -522,8 +555,8 @@ function collectCandidateForms() {
       player_specific_memories: linesFromText(field("player_specific_memories").value),
       derived_debug_tags: linesFromText(field("derived_debug_tags").value),
     };
-    return candidate;
   });
+  return nextContestants;
 }
 
 function collectSceneTypeForms() {
@@ -1057,6 +1090,7 @@ async function init() {
 if (typeof document !== "undefined") {
   const isDraftChangeTarget = (target) => {
     if (target.id === "draftName") return true;
+    if (target.id === "candidateSelect") return false;
     const panel = target.closest("[data-tab-panel]");
     return Boolean(panel && panel.dataset.tabPanel !== "logs");
   };
@@ -1079,6 +1113,18 @@ if (typeof document !== "undefined") {
     if (!isDirty) return;
     event.preventDefault();
     event.returnValue = "";
+  });
+
+  $("candidateSelector").addEventListener("change", (event) => {
+    if (event.target.id !== "candidateSelect") return;
+    try {
+      collectCandidateForms();
+      selectedCandidateIndex = Number(event.target.value);
+      renderCandidatesTab();
+      refreshDirtyState();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
   });
 
   document.querySelectorAll(".tabs button").forEach((button) => {
@@ -1375,6 +1421,9 @@ if (typeof module !== "undefined") {
     STOCK_BASIC_ENTITY_COMPONENT_FIELDS,
     collectHistoryLengthParams,
     collectStockBasicEntityComponentSettings,
+    applyCandidateFormBlocks,
+    candidateEditorHtml,
+    candidateSelectorHtml,
     draftFingerprint,
     historyLengthFieldsHtml,
     stockBasicEntityComponentSettings,
