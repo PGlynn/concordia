@@ -69,6 +69,13 @@ class InspectorTest(unittest.TestCase):
     selected = payload["selected"]
     self.assertEqual(selected["action"], "I am here for something real.")
     self.assertEqual(
+        selected["raw_utterance_text"], "I am here for something real."
+    )
+    self.assertEqual(
+        selected["concordia_event_text"],
+        "Alex: I am here for something real.",
+    )
+    self.assertEqual(
         selected["observations"], ["[observation] Blake asked about commitment."]
     )
     self.assertIn({"name": "Goal", "value": "Find a serious match."}, selected["components"])
@@ -118,6 +125,14 @@ class InspectorTest(unittest.TestCase):
     self.assertEqual(payload["entry_count"], 1)
     self.assertEqual(payload["entries"][0]["entity_name"], "Alex")
     self.assertIn("deduplicated and reconstructed", payload["entries"][0]["preview"])
+    self.assertIn(
+        "deduplicated and reconstructed",
+        payload["entries"][0]["raw_utterance_text"],
+    )
+    self.assertIn(
+        "Alex: This answer is intentionally long enough",
+        payload["entries"][0]["concordia_event_text"],
+    )
     raw_value = payload["entries"][0]["raw_entry"]["data"]["value"]["__act__"][
         "Value"
     ]
@@ -138,10 +153,53 @@ class InspectorTest(unittest.TestCase):
     self.assertEqual(payload["left"]["config"]["candidates"], ["Alex", "Blake"])
     self.assertEqual(payload["left"]["first_turn"]["entity_name"], "Alex")
     self.assertEqual(payload["right"]["first_turn"]["action"], "I need more time.")
+    self.assertEqual(
+        payload["right"]["first_turn"]["raw_utterance_text"], "I need more time."
+    )
+    self.assertEqual(
+        payload["right"]["first_turn"]["concordia_event_text"],
+        "Blake: I need more time.",
+    )
     self.assertEqual(payload["left"]["transcript"][0]["action"], "I am ready.")
     diff_labels = {item["label"] for item in payload["diffs"]}
     self.assertIn("First Actor", diff_labels)
     self.assertIn("First Action", diff_labels)
+    self.assertIn("First Raw Utterance", diff_labels)
+    self.assertIn("First Concordia Event", diff_labels)
+
+  def test_prefixed_action_is_split_into_raw_and_display_text(self):
+    run_dir = Path(tempfile.mkdtemp())
+    log = structured_logging.SimulationLog()
+    log.add_entry(
+        step=1,
+        timestamp="2026-04-21T22:00:00+00:00",
+        entity_name="Alex",
+        component_name="entity_action",
+        entry_type="entity",
+        summary="Alex speaks",
+        raw_data={
+            "key": "Entity [Alex]",
+            "value": {
+                "__act__": {
+                    "Summary": "Action: Alex speaks",
+                    "Value": "Alex: I already include the Concordia prefix.",
+                },
+            },
+        },
+    )
+    (run_dir / "structured_log.json").write_text(log.to_json(), encoding="utf-8")
+
+    payload = inspector.load_run_inspector(run_dir)
+
+    selected = payload["selected"]
+    self.assertEqual(
+        selected["raw_utterance_text"],
+        "I already include the Concordia prefix.",
+    )
+    self.assertEqual(
+        selected["concordia_event_text"],
+        "Alex: I already include the Concordia prefix.",
+    )
 
   def _write_compare_artifacts(
       self,

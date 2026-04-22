@@ -125,6 +125,7 @@ def _log_browser_entry(
 ) -> dict[str, Any]:
   raw_data = log.reconstruct_value(entry.deduplicated_data)
   preview = _entry_preview(raw_data) or entry.summary
+  text_surfaces = _text_surfaces(raw_data, entry.entity_name)
   return {
       "index": index,
       "step": entry.step,
@@ -134,6 +135,7 @@ def _log_browser_entry(
       "entry_type": entry.entry_type,
       "summary": entry.summary,
       "preview": preview,
+      **text_surfaces,
       "raw_entry": {
           "step": entry.step,
           "timestamp": entry.timestamp,
@@ -225,6 +227,12 @@ def _selected_entry_payload(
   gm_memories = interface.get_game_master_memories()[:_MAX_MEMORIES]
 
   raw_entry = log.entries[int(selected["index"])]
+  raw_entry_data = log.reconstruct_value(raw_entry.deduplicated_data)
+  text_surfaces = _text_surfaces(
+      raw_entry_data,
+      entity,
+      context.get("action") or selected.get("action", ""),
+  )
   return {
       "index": selected["index"],
       "step": step,
@@ -233,6 +241,7 @@ def _selected_entry_payload(
       "component_name": selected["component_name"],
       "summary": selected["summary"],
       "action": context.get("action") or selected.get("action", ""),
+      **text_surfaces,
       "action_prompt": action_prompt,
       "observations": observations,
       "components": components,
@@ -246,7 +255,7 @@ def _selected_entry_payload(
           "component_name": raw_entry.component_name,
           "entry_type": raw_entry.entry_type,
           "summary": raw_entry.summary,
-          "data": log.reconstruct_value(raw_entry.deduplicated_data),
+          "data": raw_entry_data,
       },
   }
 
@@ -373,6 +382,8 @@ def _first_turn_summary(turn: dict[str, Any] | None) -> dict[str, Any] | None:
       "entity_name": turn.get("entity_name"),
       "summary": turn.get("summary"),
       "action": turn.get("action"),
+      "raw_utterance_text": turn.get("raw_utterance_text"),
+      "concordia_event_text": turn.get("concordia_event_text"),
       "action_prompt": turn.get("action_prompt"),
       "observations": turn.get("observations") or [],
       "components": turn.get("components") or [],
@@ -419,6 +430,8 @@ def _compare_diffs(
       ("First Actor", ("first_turn", "entity_name")),
       ("First Step", ("first_turn", "step")),
       ("First Action", ("first_turn", "action")),
+      ("First Raw Utterance", ("first_turn", "raw_utterance_text")),
+      ("First Concordia Event", ("first_turn", "concordia_event_text")),
   ):
     left_value = _nested_get(left, path)
     right_value = _nested_get(right, path)
@@ -434,6 +447,122 @@ def _nested_get(payload: dict[str, Any], path: tuple[str, ...]) -> Any:
       return None
     value = value.get(key)
   return value
+
+
+def _text_surfaces(
+    raw_data: Any,
+    entity_name: str | None,
+    fallback_text: Any = None,
+) -> dict[str, str]:
+  """Extracts raw utterance and Concordia event/display text when available."""
+  action_payload = _find_action_payload(raw_data)
+  value_text = _first_text(
+      action_payload,
+      ("Value", "value", "Action", "action"),
+  )
+  explicit_raw = _first_text(
+      action_payload,
+      (
+          "Raw Value",
+          "Raw Action",
+          "Raw Utterance",
+          "raw_value",
+          "raw_action",
+          "raw_utterance",
+          "utterance",
+      ),
+  )
+  explicit_display = _first_text(
+      action_payload,
+      (
+          "Display",
+          "Display Text",
+          "Event",
+          "Event Text",
+          "event",
+          "display",
+          "concordia_event_text",
+      ),
+  )
+  fallback = _text_or_empty(fallback_text)
+  observed = value_text or fallback
+  raw_utterance = explicit_raw or _strip_entity_prefix(observed, entity_name)
+  concordia_event = explicit_display or observed
+  if raw_utterance and entity_name and concordia_event == raw_utterance:
+    concordia_event = f"{entity_name}: {raw_utterance}"
+  result = {}
+  if raw_utterance:
+    result["raw_utterance_text"] = raw_utterance
+  if concordia_event:
+    result["concordia_event_text"] = concordia_event
+  return result
+
+
+def _find_action_payload(raw_data: Any) -> dict[str, Any]:
+  if not isinstance(raw_data, dict):
+    return {}
+  value = raw_data.get("value")
+  if isinstance(value, dict):
+    act = value.get("__act__")
+    if isinstance(act, dict):
+      return act
+  act = raw_data.get("__act__")
+  if isinstance(act, dict):
+    return act
+  action_keys = (
+      "Value",
+      "value",
+      "Action",
+      "action",
+      "Raw Value",
+      "Raw Action",
+      "Raw Utterance",
+      "raw_value",
+      "raw_action",
+      "raw_utterance",
+      "utterance",
+      "Display",
+      "Display Text",
+      "Event",
+      "Event Text",
+      "event",
+      "display",
+      "concordia_event_text",
+  )
+  if any(key in raw_data for key in action_keys):
+    return raw_data
+  return {}
+
+
+def _first_text(payload: dict[str, Any], keys: tuple[str, ...]) -> str:
+  for key in keys:
+    if key in payload:
+      text = _text_or_empty(payload.get(key))
+      if text:
+        return text
+  return ""
+
+
+def _text_or_empty(value: Any) -> str:
+  if value is None:
+    return ""
+  if isinstance(value, str):
+    return value.strip()
+  if isinstance(value, list):
+    return "\n".join(str(item).strip() for item in value if str(item).strip())
+  if isinstance(value, (int, float, bool)):
+    return str(value)
+  return ""
+
+
+def _strip_entity_prefix(text: str, entity_name: str | None) -> str:
+  if not text:
+    return ""
+  if entity_name:
+    prefix = f"{entity_name}:"
+    if text.startswith(prefix):
+      return text[len(prefix):].strip()
+  return text.strip()
 
 
 def json_safe(payload: Any) -> Any:

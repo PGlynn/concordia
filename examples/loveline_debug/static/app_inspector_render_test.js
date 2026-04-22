@@ -9,6 +9,8 @@ function testRenderTurnDetailShowsDebugFields() {
       entity_name: "Alex",
       summary: "Alex speaks",
       action: "I am here for something real.",
+      raw_utterance_text: "I am here for something real.",
+      concordia_event_text: "Alex: I am here for something real.",
       action_prompt: ["Instructions:", "Answer honestly."],
       observations: ["[observation] Blake asked about commitment."],
       components: [{name: "Goal", value: "Find a serious match."}],
@@ -49,6 +51,8 @@ function testRenderCompareSideShowsFirstTurnAndTranscript() {
       step: 1,
       entity_name: "Alex",
       action: "I am ready.",
+      raw_utterance_text: "I am ready.",
+      concordia_event_text: "Alex: I am ready.",
       observations: ["Blake enters the pod."],
       components: [{name: "Goal", value: "Find a match."}],
     },
@@ -56,7 +60,8 @@ function testRenderCompareSideShowsFirstTurnAndTranscript() {
   });
 
   assert.match(html, /Alex vs Blake/);
-  assert.match(html, /First Action/);
+  assert.match(html, /Raw Utterance Text/);
+  assert.match(html, /Concordia Event \/ Display Text/);
   assert.match(html, /I am ready/);
   assert.match(html, /Transcript/);
 }

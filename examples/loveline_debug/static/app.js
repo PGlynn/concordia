@@ -659,6 +659,8 @@ function logSearchText(entry) {
     entry.entry_type,
     entry.summary,
     entry.preview,
+    entry.raw_utterance_text,
+    entry.concordia_event_text,
     displayValue(entry.raw_entry),
   ].join(" ").toLowerCase();
 }
@@ -713,12 +715,39 @@ function renderLogBrowser(state = logsState) {
         <td>${escapeHtml(entry.entry_type)}</td>
         <td>${escapeHtml(entry.entity_name)}</td>
         <td>${escapeHtml(entry.component_name)}</td>
-        <td class="log-summary"><strong>${escapeHtml(entry.summary || "")}</strong><br><span class="muted">${escapeHtml(entry.preview || "")}</span></td>
+        <td class="log-summary"><strong>${escapeHtml(entry.summary || "")}</strong>${renderLogTextSurfacePreview(entry)}</td>
       </tr>`;
     }).join("")}</tbody>
   </table>`;
   const selected = state.entries.find((entry) => entry.index === selectedIndex) || entries[0];
-  $("logDetails").textContent = pretty(selected?.raw_entry || selected || {});
+  $("logDetails").textContent = formatLogDetails(selected);
+}
+
+function renderLogTextSurfacePreview(entry) {
+  const rows = [];
+  if (entry.raw_utterance_text) {
+    rows.push(`<span class="muted">Raw utterance:</span> ${escapeHtml(entry.raw_utterance_text)}`);
+  }
+  if (entry.concordia_event_text) {
+    rows.push(`<span class="muted">Concordia event/display:</span> ${escapeHtml(entry.concordia_event_text)}`);
+  }
+  if (!rows.length && entry.preview) {
+    rows.push(`<span class="muted">${escapeHtml(entry.preview)}</span>`);
+  }
+  return rows.length ? `<br>${rows.join("<br>")}` : "";
+}
+
+function formatLogDetails(entry) {
+  if (!entry) return "No entry selected.";
+  const sections = [];
+  if (entry.raw_utterance_text) {
+    sections.push(`Raw utterance text:\n${entry.raw_utterance_text}`);
+  }
+  if (entry.concordia_event_text) {
+    sections.push(`Concordia event/display text:\n${entry.concordia_event_text}`);
+  }
+  sections.push(`Raw structured entry:\n${pretty(entry.raw_entry || entry)}`);
+  return sections.join("\n\n");
 }
 
 function renderLogArtifactLink(state = logsState) {
@@ -734,6 +763,16 @@ function renderTextBlock(title, value) {
   const text = displayValue(value).trim();
   if (!text) return "";
   return `<div class="inspector-block"><h3>${escapeHtml(title)}</h3><pre>${escapeHtml(text)}</pre></div>`;
+}
+
+function renderUtteranceTextSurfaces(value) {
+  const raw = value?.raw_utterance_text;
+  const eventText = value?.concordia_event_text;
+  if (!raw && !eventText) return renderTextBlock("Action", value?.action);
+  return [
+    renderTextBlock("Raw Utterance Text", raw),
+    renderTextBlock("Concordia Event / Display Text", eventText),
+  ].join("");
 }
 
 function renderListBlock(title, values) {
@@ -767,7 +806,7 @@ function renderTurnDetail(turn, state = inspectorState) {
   return `<div class="status-grid compact">${meta.map(([key, value]) =>
     `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
   ).join("")}</div>
-  ${renderTextBlock("Action", turn.action)}
+  ${renderUtteranceTextSurfaces(turn)}
   ${renderTextBlock("Action Prompt", turn.action_prompt)}
   ${renderListBlock("Observations", turn.observations)}
   ${renderComponentRows(turn.components)}
@@ -838,7 +877,7 @@ function renderCompareSide(label, side) {
     <dl class="status-grid compact">${meta.map(([key, value]) =>
       `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
     ).join("")}</dl>
-    ${turn ? renderTextBlock("First Action", turn.action) : '<div class="muted">No structured first turn.</div>'}
+    ${turn ? renderUtteranceTextSurfaces(turn) : '<div class="muted">No structured first turn.</div>'}
     ${turn ? renderListBlock("Observations", turn.observations) : ""}
     ${turn ? renderComponentRows(turn.components) : ""}
     ${transcript.length ? renderTextBlock("Transcript", transcript.map((item) =>
@@ -1170,6 +1209,7 @@ if (typeof module !== "undefined") {
     renderCompareSide,
     renderLogBrowser,
     renderTurnDetail,
+    formatLogDetails,
     filteredLogEntries,
     draftFingerprint,
     logSearchText,
