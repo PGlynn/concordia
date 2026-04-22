@@ -278,12 +278,18 @@ def _stock_key_question_outputs(raw_entry_data: Any) -> list[dict[str, Any]]:
   rows = []
   for component_name, label in _STOCK_KEY_QUESTION_COMPONENTS:
     component_data = value.get(component_name)
-    if not isinstance(component_data, dict) or "Value" not in component_data:
+    if not isinstance(component_data, dict):
+      continue
+    if "State" in component_data:
+      output = component_data["State"]
+    elif "Value" in component_data:
+      output = component_data["Value"]
+    else:
       continue
     row = {
         "name": component_name,
         "label": label,
-        "value": component_data["Value"],
+        "value": output,
     }
     if "Prompt" in component_data:
       row["prompt"] = component_data["Prompt"]

@@ -28,17 +28,17 @@ class InspectorTest(unittest.TestCase):
                 "Situation": {"Key": "Situation", "Value": "Alex is in a pod."},
                 "SituationPerception": {
                     "Key": "SituationPerception",
-                    "Value": "Alex is currently in a pod date.",
+                    "State": "Alex is currently in a pod date.",
                     "Prompt": "What situation is Alex in right now?",
                 },
                 "SelfPerception": {
                     "Key": "SelfPerception",
-                    "Value": "Alex is reflective and cautious.",
+                    "State": "Alex is reflective and cautious.",
                     "Prompt": "What kind of person is Alex?",
                 },
                 "PersonBySituation": {
                     "Key": "PersonBySituation",
-                    "Value": "Alex would answer with reassurance.",
+                    "State": "Alex would answer with reassurance.",
                     "Prompt": (
                         "What would a person like Alex do in a situation like "
                         "this?"
@@ -114,6 +114,48 @@ class InspectorTest(unittest.TestCase):
     self.assertEqual(
         selected["game_master_entries"][0]["data"]["event_resolution"]["Value"],
         "Blake hears Alex's answer.",
+    )
+
+  def test_stock_key_question_outputs_read_state_from_real_log_shape(self):
+    raw_entry_data = {
+        "key": "Entity [Marcus Vale]",
+        "value": {
+            "SituationPerception": {
+                "Key": "Question: What situation is Marcus Vale in right now?",
+                "Summary": "Marcus is in a pod date.",
+                "State": "Marcus is on a blind pod date with Lena.",
+            },
+            "SelfPerception": {
+                "Key": "Question: What kind of person is Marcus Vale?",
+                "Summary": "Marcus sees himself as intentional.",
+                "State": "Marcus is direct, warm, and looking for commitment.",
+            },
+            "PersonBySituation": {
+                "Key": (
+                    "Question: What would a person like Marcus Vale do in a "
+                    "situation like this?"
+                ),
+                "Summary": "Marcus asks a careful opening question.",
+                "State": "Marcus would ask Lena what made her smile today.",
+            },
+        },
+    }
+
+    rows = inspector._stock_key_question_outputs(raw_entry_data)
+
+    self.assertEqual(
+        [item["name"] for item in rows],
+        ["SituationPerception", "SelfPerception", "PersonBySituation"],
+    )
+    self.assertEqual(
+        rows[0]["value"], "Marcus is on a blind pod date with Lena."
+    )
+    self.assertEqual(
+        rows[1]["value"],
+        "Marcus is direct, warm, and looking for commitment.",
+    )
+    self.assertEqual(
+        rows[2]["summary"], "Marcus asks a careful opening question."
     )
 
   def test_missing_structured_log_reports_unavailable(self):
