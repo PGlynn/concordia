@@ -61,8 +61,10 @@ the run proceed.
 
 By default, `Disable language model` is checked. This uses Concordia's
 `NoLanguageModel`, which is useful for config, checkpoint, and logging smoke
-tests but produces empty free-text actions. Uncheck it and set `API Type`,
-`Model`, and provider credentials when you want a full model-backed run.
+tests but produces empty free-text actions. The draft still defaults the
+model-backed fields to Loveline's local starter stack: `API Type` is `ollama`
+and `Model` is `qwen3.5:35b-a3b`. Uncheck `Disable language model` when you
+want a full local model-backed run.
 
 ## Artifact Layout
 

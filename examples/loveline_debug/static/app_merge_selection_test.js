@@ -13,7 +13,7 @@ function testApplyPairPreservesUnsavedDraftEdits() {
     run: {
       max_steps: 42,
       disable_language_model: false,
-      api_type: "openai",
+      api_type: "ollama",
       model_name: "unsaved-model",
       checkpoint_every_step: false,
     },
@@ -80,8 +80,8 @@ function testApplyPairPreservesUnsavedDraftEdits() {
     run: {
       max_steps: 8,
       disable_language_model: true,
-      api_type: "openai",
-      model_name: "gpt-4o",
+      api_type: "ollama",
+      model_name: "qwen3.5:35b-a3b",
       checkpoint_every_step: true,
     },
     scene_defaults: {

@@ -8,6 +8,9 @@ let logsState = null;
 let cleanDraftJson = "";
 let isDirty = false;
 
+const DEFAULT_API_TYPE = "ollama";
+const DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b";
+
 const $ = (id) => document.getElementById(id);
 
 async function api(path, options = {}) {
@@ -210,8 +213,8 @@ function renderConfigTab() {
   $("defaultPremise").value = draft.scene_defaults?.default_premise || "";
   $("maxSteps").value = draft.run?.max_steps || 8;
   $("disableLm").checked = Boolean(draft.run?.disable_language_model);
-  $("apiType").value = draft.run?.api_type || "openai";
-  $("modelName").value = draft.run?.model_name || "gpt-4o";
+  $("apiType").value = draft.run?.api_type || DEFAULT_API_TYPE;
+  $("modelName").value = draft.run?.model_name || DEFAULT_MODEL_NAME;
   $("startPaused").checked = draft.run?.start_paused !== false;
   $("checkpointEveryStep").checked = draft.run?.checkpoint_every_step !== false;
   $("configRawJson").value = pretty({
@@ -1211,6 +1214,8 @@ if (typeof module !== "undefined") {
     renderTurnDetail,
     formatLogDetails,
     filteredLogEntries,
+    DEFAULT_API_TYPE,
+    DEFAULT_MODEL_NAME,
     draftFingerprint,
     logSearchText,
     runContextLabel,

@@ -109,8 +109,8 @@ class RunnerTest(absltest.TestCase):
         "run": {
             "max_steps": 12,
             "disable_language_model": True,
-            "api_type": "openai",
-            "model_name": "gpt-4o-mini",
+            "api_type": "ollama",
+            "model_name": "qwen3.5:35b-a3b",
             "start_paused": False,
             "checkpoint_every_step": False,
         },
@@ -125,6 +125,29 @@ class RunnerTest(absltest.TestCase):
     self.assertTrue(summary["disable_language_model"])
     self.assertFalse(summary["start_paused"])
     self.assertFalse(summary["checkpoint_every_step"])
+
+  def test_model_builder_falls_back_to_local_ollama_when_lm_enabled(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    calls = []
+
+    def fake_setup(**kwargs):
+      calls.append(kwargs)
+      return object()
+
+    original_setup = runner.language_models.language_model_setup
+    runner.language_models.language_model_setup = fake_setup
+    try:
+      manager._build_model({"disable_language_model": False})  # pylint: disable=protected-access
+    finally:
+      runner.language_models.language_model_setup = original_setup
+
+    self.assertEqual(calls, [{
+        "api_type": "ollama",
+        "model_name": "qwen3.5:35b-a3b",
+        "api_key": None,
+        "disable_language_model": False,
+    }])
 
 
 if __name__ == "__main__":

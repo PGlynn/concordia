@@ -1,20 +1,27 @@
 const assert = require("assert/strict");
 
 const {
+  DEFAULT_API_TYPE,
+  DEFAULT_MODEL_NAME,
   draftFingerprint,
   runContextLabel,
   summarizeDraftContext,
 } = require("./app.js");
 
+function testBrowserFallbackRunSettingsUseLocalLovelineModel() {
+  assert.equal(DEFAULT_API_TYPE, "ollama");
+  assert.equal(DEFAULT_MODEL_NAME, "qwen3.5:35b-a3b");
+}
+
 function testDraftFingerprintIgnoresObjectKeyOrder() {
   const left = {
     name: "draft",
-    run: {model_name: "gpt-4o", max_steps: 8},
+    run: {model_name: "qwen3.5:35b-a3b", max_steps: 8},
     contestants: [{name: "Alex", id: "a"}],
   };
   const right = {
     contestants: [{id: "a", name: "Alex"}],
-    run: {max_steps: 8, model_name: "gpt-4o"},
+    run: {max_steps: 8, model_name: "qwen3.5:35b-a3b"},
     name: "draft",
   };
 
@@ -30,8 +37,8 @@ function testSummarizeDraftContextIncludesGuardrailMetadata() {
     run: {
       max_steps: 9,
       disable_language_model: true,
-      api_type: "openai",
-      model_name: "gpt-4o",
+      api_type: "ollama",
+      model_name: "qwen3.5:35b-a3b",
       start_paused: false,
       checkpoint_every_step: false,
     },
@@ -58,6 +65,7 @@ function testRunContextLabelMakesRecentRunsReadable() {
   assert.equal(label, "Alex vs Blake | 9 steps | LM disabled | starts playing | no checkpoints");
 }
 
+testBrowserFallbackRunSettingsUseLocalLovelineModel();
 testDraftFingerprintIgnoresObjectKeyOrder();
 testSummarizeDraftContextIncludesGuardrailMetadata();
 testRunContextLabelMakesRecentRunsReadable();

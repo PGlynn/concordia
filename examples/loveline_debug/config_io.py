@@ -23,6 +23,8 @@ STARTER_ROOT = Path(
     "/Users/claw/.openclaw/games/loveline/concordia_dating_show_starter"
 )
 DRAFT_SCHEMA_VERSION = 1
+DEFAULT_API_TYPE = "ollama"
+DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b"
 
 
 class DraftValidationError(ValueError):
@@ -149,8 +151,8 @@ def make_draft_for_selection(
       "run": {
           "max_steps": 8,
           "disable_language_model": True,
-          "api_type": "openai",
-          "model_name": "gpt-4o",
+          "api_type": DEFAULT_API_TYPE,
+          "model_name": DEFAULT_MODEL_NAME,
           "api_key": None,
           "start_paused": True,
           "checkpoint_every_step": True,

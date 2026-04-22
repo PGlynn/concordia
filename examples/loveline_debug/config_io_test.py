@@ -18,6 +18,13 @@ class ConfigIoTest(absltest.TestCase):
         ["man", "woman"],
     )
 
+  def test_default_draft_keeps_smoke_lm_disabled_but_points_to_local_model(self):
+    draft = config_io.make_default_draft()
+
+    self.assertTrue(draft["run"]["disable_language_model"])
+    self.assertEqual(draft["run"]["api_type"], "ollama")
+    self.assertEqual(draft["run"]["model_name"], "qwen3.5:35b-a3b")
+
   def test_build_config_uses_stock_roles_and_two_entities(self):
     draft = config_io.make_default_draft()
 
@@ -57,4 +64,3 @@ class ConfigIoTest(absltest.TestCase):
 
 if __name__ == "__main__":
   absltest.main()
-

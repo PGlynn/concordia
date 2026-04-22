@@ -216,8 +216,8 @@ class RunManager:
     if run_settings.get("disable_language_model", True):
       return no_language_model.NoLanguageModel()
     return language_models.language_model_setup(
-        api_type=run_settings.get("api_type", "openai"),
-        model_name=run_settings.get("model_name", "gpt-4o"),
+        api_type=run_settings.get("api_type") or config_io.DEFAULT_API_TYPE,
+        model_name=run_settings.get("model_name") or config_io.DEFAULT_MODEL_NAME,
         api_key=run_settings.get("api_key") or None,
         disable_language_model=False,
     )
