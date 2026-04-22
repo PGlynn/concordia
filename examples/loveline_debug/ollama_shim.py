@@ -243,10 +243,14 @@ def _build_generation_prompt(
 
 
 def _clean_sample_text(result: str, continuation_prefix: str | None) -> str:
-  cleaned = _strip_repeated_prefix(result, continuation_prefix)
-  cleaned = _strip_leading_answer_label(cleaned)
-  cleaned = _strip_outer_quotes(cleaned)
+  cleaned = result.strip()
+  for _ in range(2):
+    cleaned = _strip_outer_quotes(cleaned)
+    cleaned = _strip_leading_answer_label(cleaned)
+    cleaned = _strip_repeated_prefix(cleaned, continuation_prefix)
   cleaned = _strip_quote_characters(cleaned)
+  cleaned = _strip_leading_answer_label(cleaned)
+  cleaned = _strip_repeated_prefix(cleaned, continuation_prefix)
   return cleaned.strip()
 
 

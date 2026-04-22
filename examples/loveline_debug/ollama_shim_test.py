@@ -53,6 +53,19 @@ class OllamaShimTest(absltest.TestCase):
         },
     )
 
+  def test_sample_text_strips_answer_label_before_continuation_prefix(self):
+    client = FakeOllamaClient(['"Answer: Jake is not a turtle."'])
+    model = ollama_shim.LovelineOllamaLanguageModel(
+        model_name="qwen3.5:35b-a3b", client=client
+    )
+
+    result = model.sample_text("Question: Is Jake a turtle?\nAnswer: Jake is ")
+
+    self.assertEqual(result, "not a turtle.")
+    self.assertIn(
+        "Existing answer text: 'Jake is'", client.calls[0]["prompt"]
+    )
+
   def test_sample_choice_sends_think_false_and_json_format(self):
     client = FakeOllamaClient(['{"choice": "2"}'])
     model = ollama_shim.LovelineOllamaLanguageModel(
