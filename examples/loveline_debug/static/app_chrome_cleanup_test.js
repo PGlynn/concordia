@@ -9,7 +9,7 @@ const {
 
 function installRecentRunsDom() {
   const elements = new Map();
-  for (const id of ["dialogueRunActions", "compareLeft", "compareRight", "logRunSelect", "cleanDialogueRunSelect", "inspectorRunSelect"]) {
+  for (const id of ["compareLeft", "compareRight", "logRunSelect", "cleanDialogueRunSelect", "inspectorRunSelect"]) {
     elements.set(id, {
       innerHTML: "",
       value: "",
@@ -36,22 +36,18 @@ function installProgressDom() {
   return elements;
 }
 
-function testRecentRunActionsMoveIntoDialogueWorkflow() {
+function testRecentRunsPopulateDialogueDropdownOnly() {
   const elements = installRecentRunsDom();
   renderRecentRuns([
     {run_id: "run_a", status: "done", artifacts: {}, summary: {}},
     {run_id: "run_b", status: "done", artifacts: {}, summary: {}},
   ]);
 
-  const html = elements.get("dialogueRunActions").innerHTML;
-  assert.match(html, /Saved Runs/);
-  assert.match(html, /Open in Inspect/);
-  assert.match(html, /Open Conversation/);
-  assert.match(html, /Open Log/);
-  assert.doesNotMatch(html, /Use as A/);
-  assert.doesNotMatch(html, /Use as B/);
-  assert.doesNotMatch(html, />Left<\/button>/);
-  assert.doesNotMatch(html, />Right<\/button>/);
+  const dialogueOptions = elements.get("cleanDialogueRunSelect").innerHTML;
+  assert.match(dialogueOptions, /run_a/);
+  assert.match(dialogueOptions, /run_b/);
+  assert.doesNotMatch(dialogueOptions, /Saved Runs/);
+  assert.doesNotMatch(dialogueOptions, /Open Conversation/);
 }
 
 function testCompareSideUsesSceneCountLabel() {
@@ -112,7 +108,7 @@ function testProgressSummaryUsesConfiguredShowFlowHonestly() {
   assert.doesNotMatch(html, /Exact active scene\/round is not emitted/);
 }
 
-testRecentRunActionsMoveIntoDialogueWorkflow();
+testRecentRunsPopulateDialogueDropdownOnly();
 testCompareSideUsesSceneCountLabel();
 testShowFlowSummaryListsUsefulSceneMetadata();
 testProgressSummaryUsesConfiguredShowFlowHonestly();

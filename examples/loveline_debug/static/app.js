@@ -945,44 +945,9 @@ function artifactRel(path) {
 
 function renderDialogueRunWorkflow(runs, active = latestStatus?.active) {
   renderRunOptions(runs, active);
-  renderDialogueRunActions(runs);
 }
 
 const renderRecentRuns = renderDialogueRunWorkflow;
-
-function renderDialogueRunActions(runs) {
-  const element = $("dialogueRunActions");
-  if (!element) return;
-  if (!runs.length) {
-    element.innerHTML = '<div class="muted">No saved runs yet.</div>';
-    return;
-  }
-  element.innerHTML = `<div class="band"><h2>Saved Runs</h2>${runs.map((run) => {
-    const id = run.run_id;
-    const links = run.artifacts || {};
-    const html = artifactRel(links.html_log);
-    const json = artifactRel(links.structured_log);
-    const cfg = artifactRel(links.config_snapshot);
-    const summary = run.summary || run.run_context || {};
-    const meta = [
-      run.status || "unknown",
-      run.finished_at || run.started_at || summary.snapshot_at || "",
-      runContextLabel(summary),
-    ].filter(Boolean).join(" | ");
-    return `<div class="run-item">
-      <div><strong>${escapeHtml(id)}</strong><div class="muted">${escapeHtml(meta)}</div></div>
-      <div class="run-actions">
-        <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Open in Inspect</button>
-        <button class="secondary small" data-dialogue-run="${escapeHtml(id)}" type="button">Open Conversation</button>
-        <button class="secondary small" data-log-run="${escapeHtml(id)}" type="button">Open Log</button>
-        <button class="secondary small" data-delete-run="${escapeHtml(id)}" type="button">Delete</button>
-        ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
-        ${json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">json</a>` : ""}
-        ${cfg ? `<a href="/artifacts/${escapeHtml(cfg)}" target="_blank">config</a>` : ""}
-      </div>
-    </div>`;
-  }).join("")}</div>`;
-}
 
 function renderRunOptions(runs, active = null) {
   renderCompareOptions(runs);

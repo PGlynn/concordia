@@ -21,7 +21,6 @@ function makeSelect(value = "") {
 
 function installRunSelectDom() {
   const elements = new Map();
-  elements.set("dialogueRunActions", {innerHTML: ""});
   for (const id of [
     "compareLeft",
     "compareRight",
