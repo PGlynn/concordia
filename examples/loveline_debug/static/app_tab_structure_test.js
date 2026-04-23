@@ -53,8 +53,23 @@ function testSavedDraftPickerLivesInHeader() {
 
   assert.match(header, /<select id="loadDraft">/);
   assert.match(header, /id="createDraft"/);
+  assert.doesNotMatch(header, /id="loadDraftBtn"/);
   assert.doesNotMatch(firstSection, /<select id="loadDraft">/);
   assert.match(firstSection, /id="showFlowSummary"/);
+}
+
+function testConfigOwnsPairAndRestoreControls() {
+  const firstSection = html.match(/<main>[\s\S]*?<section>([\s\S]*?)<\/section>/)[1];
+  const configPanel = html.match(/<div data-tab-panel="config"[\s\S]*?<\/details>\s*<\/div>/)[0];
+
+  assert.doesNotMatch(firstSection, /Restore \/ Reset/);
+  assert.doesNotMatch(firstSection, /Selected Pair/);
+  assert.doesNotMatch(firstSection, /id="candidateTags"/);
+  assert.match(configPanel, /Selected Pair/);
+  assert.match(configPanel, /Restore \/ Reset/);
+  assert.match(configPanel, /id="candidateTags"/);
+  assert.match(configPanel, /id="restoreSelection"/);
+  assert.match(configPanel, /id="resetDefault"/);
 }
 
 function testSemanticsAreVisibleInUiCopy() {
@@ -68,5 +83,6 @@ testScenesAreSplitIntoUserFacingSurfaces();
 testSnapshotLivesUnderLogs();
 testTabsStayVisibleWhilePanelsScroll();
 testSavedDraftPickerLivesInHeader();
+testConfigOwnsPairAndRestoreControls();
 testSemanticsAreVisibleInUiCopy();
 console.log("app_tab_structure_test passed");

@@ -420,7 +420,6 @@
       <label for="loadDraft">Saved Draft</label>
       <div class="row">
         <select id="loadDraft"></select>
-        <button id="loadDraftBtn" class="secondary" type="button">Load</button>
         <button id="createDraft" class="secondary" type="button">Create New</button>
       </div>
     </div>
@@ -436,18 +435,6 @@
       <div class="band">
         <h2>Show-Flow Summary</h2>
         <div id="showFlowSummary" class="show-flow-summary"></div>
-      </div>
-      <div class="band">
-        <h2>Restore / Reset</h2>
-        <div class="safe-actions">
-          <button id="restoreSelection" class="secondary" type="button">Restore Pair From Source</button>
-          <button id="resetDefault" class="secondary" type="button">Reset To Default Source Pair</button>
-        </div>
-        <div class="muted">Rebuilds the browser draft from source-backed data.</div>
-      </div>
-      <div class="band">
-        <h2>Selected Pair</h2>
-        <div id="candidateTags"></div>
       </div>
     </section>
     <section>
@@ -478,6 +465,18 @@
             <label>Male Candidate<select id="maleCandidate"></select></label>
             <label>Female Candidate<select id="femaleCandidate"></select></label>
           </div>
+        </div>
+        <div class="editor-block">
+          <div class="block-title"><h2>Selected Pair</h2></div>
+          <div id="candidateTags"></div>
+        </div>
+        <div class="editor-block">
+          <div class="block-title"><h2>Restore / Reset</h2></div>
+          <div class="safe-actions">
+            <button id="restoreSelection" class="secondary" type="button">Restore Pair From Source</button>
+            <button id="resetDefault" class="secondary" type="button">Reset To Default Source Pair</button>
+          </div>
+          <div class="muted">Rebuilds the browser draft from source-backed data.</div>
         </div>
         <div class="editor-block">
           <div class="block-title"><h2>Run Settings</h2></div>

@@ -12,6 +12,7 @@ let isDirty = false;
 let selectedCandidateIndex = 0;
 let selectedSceneIndex = 0;
 let selectedSceneTypeName = "";
+let selectedLoadedDraftName = "";
 
 const DEFAULT_API_TYPE = "ollama";
 const DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b";
@@ -798,9 +799,19 @@ function populateChrome() {
 
 async function refreshDrafts() {
   const drafts = await api("/api/drafts");
-  $("loadDraft").innerHTML = drafts.map((item) =>
-    `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`
-  ).join("");
+  $("loadDraft").innerHTML = [
+    '<option value="">Choose a saved draft...</option>',
+    ...drafts.map((item) =>
+      `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`
+    ),
+  ].join("");
+  const savedNames = drafts.map((item) => item.name);
+  if (selectedLoadedDraftName && savedNames.includes(selectedLoadedDraftName)) {
+    $("loadDraft").value = selectedLoadedDraftName;
+  } else {
+    $("loadDraft").value = "";
+    selectedLoadedDraftName = "";
+  }
 }
 
 async function refreshStatus() {
@@ -1289,9 +1300,26 @@ async function loadCompare(leftRunId, rightRunId) {
 async function loadSourceSelection(ids, message) {
   const path = `/api/draft/selection?ids=${encodeURIComponent(ids.join(","))}`;
   draft = await api(path);
+  selectedLoadedDraftName = "";
   hydrateInputs();
   markClean();
   setMessage(message);
+}
+
+async function loadSavedDraftByName(name, options = {}) {
+  if (!name) return false;
+  const confirmDiscard = options.confirmDiscard || confirmDiscardChanges;
+  const apiClient = options.apiClient || api;
+  const hydrate = options.hydrate || hydrateInputs;
+  const markCleanState = options.markCleanState || markClean;
+  const showMessage = options.showMessage || setMessage;
+  if (!confirmDiscard("load another saved draft")) return false;
+  draft = await apiClient(`/api/draft?name=${encodeURIComponent(name)}`);
+  selectedLoadedDraftName = name;
+  hydrate();
+  markCleanState();
+  showMessage("Draft loaded.");
+  return true;
 }
 
 async function refreshSourceCandidates() {
@@ -1300,6 +1328,7 @@ async function refreshSourceCandidates() {
 
 async function resetToDefaultSourceDraft() {
   draft = await api("/api/draft/default");
+  selectedLoadedDraftName = "";
   hydrateInputs();
   markClean();
   setMessage("Default source pair restored.");
@@ -1308,6 +1337,7 @@ async function resetToDefaultSourceDraft() {
 async function createNewDraft() {
   draft = await api("/api/draft/default");
   draft.name = "new_loveline_debug_draft";
+  selectedLoadedDraftName = "";
   hydrateInputs();
   markDirty();
   setMessage("New browser draft created from the default source pair.");
@@ -1492,10 +1522,12 @@ if (typeof document !== "undefined") {
 
   $("saveDraft").addEventListener("click", async () => {
     try {
+      const savedName = $("draftName").value;
       const payload = await api("/api/draft", {
         method: "POST",
-        body: JSON.stringify({name: $("draftName").value, draft: collectDraft()}),
+        body: JSON.stringify({name: savedName, draft: collectDraft()}),
       });
+      selectedLoadedDraftName = savedName;
       await refreshSourceCandidates();
       await refreshDrafts();
       hydrateInputs();
@@ -1506,14 +1538,13 @@ if (typeof document !== "undefined") {
     }
   });
 
-  $("loadDraftBtn").addEventListener("click", async () => {
+  $("loadDraft").addEventListener("change", async () => {
+    const selectedName = $("loadDraft").value;
     try {
-      if (!confirmDiscardChanges("load another saved draft")) return;
-      draft = await api(`/api/draft?name=${encodeURIComponent($("loadDraft").value)}`);
-      hydrateInputs();
-      markClean();
-      setMessage("Draft loaded.");
+      const loaded = await loadSavedDraftByName(selectedName);
+      if (!loaded) $("loadDraft").value = selectedLoadedDraftName;
     } catch (error) {
+      $("loadDraft").value = selectedLoadedDraftName;
       setMessage(error.message, true);
     }
   });
@@ -1841,6 +1872,7 @@ if (typeof document !== "undefined") {
 if (typeof module !== "undefined") {
   module.exports = {
     displayValue,
+    loadSavedDraftByName,
     mergeSelectionDraft,
     remapSceneForSelection,
     renderCompareSide,
