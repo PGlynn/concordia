@@ -34,6 +34,7 @@ const ENTITY_PREFAB_OPTIONS = [
 ];
 
 const $ = (id) => document.getElementById(id);
+const selectOptionSignatures = new WeakMap();
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -106,6 +107,42 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function selectHasFocus(select) {
+  return typeof document !== "undefined" && document.activeElement === select;
+}
+
+function optionSignature(items) {
+  return JSON.stringify(items.map((item) => [item.value, item.label]));
+}
+
+function optionItemsHtml(items) {
+  return items.map((item) =>
+    `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`
+  ).join("");
+}
+
+function updateSelectOptions(select, items, preferredValue = "") {
+  if (!select) return "";
+  const signature = optionSignature(items);
+  const knownSignature = selectOptionSignatures.get(select);
+  const values = new Set(items.map((item) => item.value));
+  const previous = select.value;
+  const nextValue = values.has(previous)
+    ? previous
+    : (values.has(preferredValue) ? preferredValue : "");
+
+  if (selectHasFocus(select)) {
+    return values.has(previous) ? previous : "";
+  }
+
+  if (knownSignature !== signature) {
+    select.innerHTML = optionItemsHtml(items);
+    selectOptionSignatures.set(select, signature);
+  }
+  if (select.value !== nextValue) select.value = nextValue;
+  return select.value;
 }
 
 function setMessage(text, isError = false) {
@@ -961,68 +998,47 @@ function renderRunOptions(runs, active = null) {
 }
 
 function renderCompareOptions(runs) {
-  const options = runs.map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
-  ).join("");
-  const previousLeft = $("compareLeft").value;
-  const previousRight = $("compareRight").value;
-  $("compareLeft").innerHTML = options;
-  $("compareRight").innerHTML = options;
-  if (runs.some((run) => run.run_id === previousLeft)) $("compareLeft").value = previousLeft;
-  if (runs.some((run) => run.run_id === previousRight)) $("compareRight").value = previousRight;
-  if (!$("compareLeft").value && runs[0]) $("compareLeft").value = runs[0].run_id;
-  if ((!$("compareRight").value || $("compareRight").value === $("compareLeft").value) && runs[1]) {
-    $("compareRight").value = runs[1].run_id;
+  const items = runs.map((run) => ({value: run.run_id, label: runOptionLabel(run)}));
+  const left = $("compareLeft");
+  const right = $("compareRight");
+  const leftValue = updateSelectOptions(left, items, runs[0]?.run_id || "");
+  if (right && !selectHasFocus(right) && right.value === leftValue && runs[1]) {
+    right.value = "";
   }
+  const rightPreferred = (!right?.value || right.value === leftValue) && runs[1]
+    ? runs[1].run_id
+    : (right?.value || "");
+  updateSelectOptions(right, items, rightPreferred);
 }
 
 function renderLogRunOptions(runs) {
   const select = $("logRunSelect");
   if (!select) return;
-  const previous = select.value;
   const logRuns = runs.filter((run) => run.artifacts?.structured_log);
-  const options = (logRuns.length ? logRuns : runs).map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
-  ).join("");
-  select.innerHTML = options;
-  if ((logRuns.length ? logRuns : runs).some((run) => run.run_id === previous)) {
-    select.value = previous;
-  }
+  const availableRuns = logRuns.length ? logRuns : runs;
+  const items = availableRuns.map((run) => ({value: run.run_id, label: runOptionLabel(run)}));
+  updateSelectOptions(select, items);
 }
 
 function renderCleanDialogueRunOptions(runs, active = null) {
   const select = $("cleanDialogueRunSelect");
   if (!select) return;
-  const previous = select.value;
   const logRuns = runs.filter((run) => run.artifacts?.structured_log);
-  const savedOptions = (logRuns.length ? logRuns : runs).map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
-  ).join("");
-  const activeOption = active && ["starting", "running"].includes(active.status)
-    ? `<option value="__active__">Active run - ${escapeHtml(active.run_id)}</option>`
-    : "";
-  select.innerHTML = activeOption + savedOptions;
-  if (previous === "__active__" && activeOption) {
-    select.value = "__active__";
-    return;
+  const availableRuns = logRuns.length ? logRuns : runs;
+  const items = [];
+  if (active && ["starting", "running"].includes(active.status)) {
+    items.push({value: "__active__", label: `Active run - ${active.run_id}`});
   }
-  if (activeOption && !previous) {
-    select.value = "__active__";
-    return;
-  }
-  if ((logRuns.length ? logRuns : runs).some((run) => run.run_id === previous)) {
-    select.value = previous;
-  }
+  availableRuns.forEach((run) => items.push({value: run.run_id, label: runOptionLabel(run)}));
+  const preferred = items.some((item) => item.value === "__active__") ? "__active__" : "";
+  updateSelectOptions(select, items, preferred);
 }
 
 function renderInspectorRunOptions(runs) {
   const select = $("inspectorRunSelect");
   if (!select) return;
-  const previous = select.value;
-  select.innerHTML = runs.map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
-  ).join("");
-  if (runs.some((run) => run.run_id === previous)) select.value = previous;
+  const items = runs.map((run) => ({value: run.run_id, label: runOptionLabel(run)}));
+  updateSelectOptions(select, items);
 }
 
 async function loadInspector(runId, selection = {}) {
@@ -2003,5 +2019,6 @@ if (typeof module !== "undefined") {
     logSearchText,
     runContextLabel,
     summarizeDraftContext,
+    updateSelectOptions,
   };
 }

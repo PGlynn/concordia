@@ -17,6 +17,12 @@ from examples.loveline_debug import runner
 
 
 STATIC_DIR = Path(__file__).with_name("static")
+APP_JS = STATIC_DIR / "app.js"
+INDEX_HTML = STATIC_DIR / "index.html"
+
+
+class ReusableThreadingTCPServer(socketserver.ThreadingTCPServer):
+  allow_reuse_address = True
 
 
 class LovelineDebugApp:
@@ -35,7 +41,7 @@ class LovelineDebugApp:
         parsed = parse.urlparse(self.path)
         try:
           if parsed.path == "/":
-            self._serve_file(STATIC_DIR / "index.html")
+            self._serve_index()
           elif parsed.path.startswith("/static/"):
             self._serve_file(STATIC_DIR / parsed.path.removeprefix("/static/"))
           elif parsed.path == "/api/source":
@@ -124,6 +130,28 @@ class LovelineDebugApp:
         self.end_headers()
         self.wfile.write(encoded)
 
+      def _send_no_store_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+
+      def _serve_index(self) -> None:
+        if not INDEX_HTML.exists() or not INDEX_HTML.is_file():
+          self.send_error(404)
+          return
+        version = APP_JS.stat().st_mtime_ns if APP_JS.exists() else 0
+        html = INDEX_HTML.read_text(encoding="utf-8").replace(
+            'src="/static/app.js"',
+            f'src="/static/app.js?v={version}"',
+        )
+        data = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self._send_no_store_headers()
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
       def _serve_file(self, path: Path) -> None:
         if not path.exists() or not path.is_file():
           self.send_error(404)
@@ -132,6 +160,8 @@ class LovelineDebugApp:
         data = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        if path.resolve() in (INDEX_HTML.resolve(), APP_JS.resolve()):
+          self._send_no_store_headers()
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -198,10 +228,9 @@ def main() -> None:
   args = parser.parse_args()
 
   app = LovelineDebugApp(config_io.StarterPaths(args.starter_root))
-  server = socketserver.ThreadingTCPServer(
+  server = ReusableThreadingTCPServer(
       ("127.0.0.1", args.port), app.make_handler()
   )
-  server.allow_reuse_address = True
   print(f"Loveline debug UI: http://localhost:{args.port}")
   print(f"Starter data: {args.starter_root}")
   server.serve_forever()

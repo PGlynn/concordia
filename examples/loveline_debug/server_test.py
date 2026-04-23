@@ -1,7 +1,6 @@
 """Tests for the Loveline debug HTTP app."""
 
 import json
-import socketserver
 import threading
 from pathlib import Path
 from urllib import request
@@ -14,11 +13,20 @@ from examples.loveline_debug import server
 
 class ServerTest(absltest.TestCase):
 
-  def test_default_draft_api_enables_language_model(self):
-    app = server.LovelineDebugApp(config_io.StarterPaths())
-    httpd = socketserver.ThreadingTCPServer(("127.0.0.1", 0), app.make_handler())
+  def _start_server(self, paths=None):
+    app = server.LovelineDebugApp(paths or config_io.StarterPaths())
+    httpd = server.ReusableThreadingTCPServer(
+        ("127.0.0.1", 0), app.make_handler()
+    )
     thread = threading.Thread(target=httpd.serve_forever)
     thread.start()
+    return httpd, thread
+
+  def test_debug_server_is_configured_for_quick_port_reuse(self):
+    self.assertTrue(server.ReusableThreadingTCPServer.allow_reuse_address)
+
+  def test_default_draft_api_enables_language_model(self):
+    httpd, thread = self._start_server()
     try:
       port = httpd.server_address[1]
       url = f"http://127.0.0.1:{port}/api/draft/default"
@@ -38,10 +46,7 @@ class ServerTest(absltest.TestCase):
     run_dir = paths.runs_dir / "run_1"
     run_dir.mkdir(parents=True)
     (run_dir / "manifest.json").write_text("{}", encoding="utf-8")
-    app = server.LovelineDebugApp(paths)
-    httpd = socketserver.ThreadingTCPServer(("127.0.0.1", 0), app.make_handler())
-    thread = threading.Thread(target=httpd.serve_forever)
-    thread.start()
+    httpd, thread = self._start_server(paths)
     try:
       port = httpd.server_address[1]
       req = request.Request(
@@ -57,6 +62,42 @@ class ServerTest(absltest.TestCase):
 
     self.assertEqual(payload, {"status": "deleted", "run_id": "run_1"})
     self.assertFalse(run_dir.exists())
+
+  def test_index_serves_cache_busted_app_script_with_no_store_headers(self):
+    httpd, thread = self._start_server()
+    try:
+      port = httpd.server_address[1]
+      with request.urlopen(f"http://127.0.0.1:{port}/") as response:  # nosec: local test server
+        body = response.read().decode("utf-8")
+        cache_control = response.headers.get("Cache-Control")
+        pragma = response.headers.get("Pragma")
+        expires = response.headers.get("Expires")
+    finally:
+      httpd.shutdown()
+      httpd.server_close()
+      thread.join()
+
+    self.assertRegex(body, r'src="/static/app\.js\?v=\d+"')
+    self.assertEqual(cache_control, "no-store, max-age=0")
+    self.assertEqual(pragma, "no-cache")
+    self.assertEqual(expires, "0")
+
+  def test_app_js_serves_no_store_even_with_version_query(self):
+    httpd, thread = self._start_server()
+    try:
+      port = httpd.server_address[1]
+      with request.urlopen(
+          f"http://127.0.0.1:{port}/static/app.js?v=123"
+      ) as response:  # nosec: local test server
+        body = response.read().decode("utf-8")
+        cache_control = response.headers.get("Cache-Control")
+    finally:
+      httpd.shutdown()
+      httpd.server_close()
+      thread.join()
+
+    self.assertIn("async function refreshStatus()", body)
+    self.assertEqual(cache_control, "no-store, max-age=0")
 
 
 if __name__ == "__main__":
