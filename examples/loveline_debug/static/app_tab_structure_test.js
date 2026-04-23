@@ -57,13 +57,15 @@ function testSavedDraftPickerLivesInHeader() {
   const firstSection = html.match(/<main>[\s\S]*?<section>([\s\S]*?)<\/section>/)[1];
 
   assert.match(header, /<select id="loadDraft">/);
+  assert.match(header, /Show Drafts/);
   assert.match(header, /id="createDraft"/);
+  assert.match(header, /id="runDraft"[^>]*>Mount Draft<\/button>/);
   assert.match(header, /id="saveDraft"/);
   assert.doesNotMatch(header, /id="loadDraftBtn"/);
   assert.doesNotMatch(header, /id="draftName"/);
   assert.doesNotMatch(firstSection, /<select id="loadDraft">/);
   assert.match(firstSection, /id="showFlowSummary"/);
-  assert.match(firstSection, /Start Run From Current Draft/);
+  assert.match(firstSection, /id="controlNewRun"/);
   assert.match(firstSection, /id="progressSummary"/);
 }
 

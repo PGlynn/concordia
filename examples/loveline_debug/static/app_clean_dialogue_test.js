@@ -8,6 +8,8 @@ const {
   cleanDialogueStepLabel,
   cleanDialogueText,
   activeDialogueState,
+  completedDialogueHandoffRunId,
+  followedActiveDialogueRunId,
   renderCleanDialogue,
 } = require("./app.js");
 
@@ -152,10 +154,45 @@ function testRenderCleanDialogueCanFollowActiveRun() {
   assert.match(elements.get("cleanDialogueView").innerHTML, /I am here live/);
 }
 
+function testCompletedRunHandoffKeepsFollowingTheSameRun() {
+  const elements = installDom();
+  elements.get("cleanDialogueRunSelect").value = "__active__";
+
+  const followedRunId = followedActiveDialogueRunId(
+    {
+      active: {
+        run_id: "run_live",
+        status: "running",
+      },
+    },
+    null,
+    "__active__"
+  );
+
+  assert.equal(followedRunId, "run_live");
+  assert.equal(completedDialogueHandoffRunId(followedRunId, {
+    active: {
+      run_id: "run_live",
+      status: "completed",
+      artifacts: {
+        structured_log: "/tmp/run_live/structured_log.json",
+      },
+    },
+  }), "run_live");
+  assert.equal(completedDialogueHandoffRunId(followedRunId, {
+    active: {
+      run_id: "run_live",
+      status: "completed",
+      artifacts: {},
+    },
+  }), "");
+}
+
 testIndexExposesDialogueAsPrimaryTab();
 testCleanDialogueFiltersCandidateDialogueOnly();
 testCleanDialogueContextPrefersStateSummary();
 testRenderCleanDialogueShowsContextAndConversation();
 testCleanDialogueHidesEngineStepWhenFirstSpeechStartsAtStepTwo();
 testRenderCleanDialogueCanFollowActiveRun();
+testCompletedRunHandoffKeepsFollowingTheSameRun();
 console.log("app_clean_dialogue_test passed");

@@ -71,7 +71,9 @@ function testSavedDraftHeaderHasNoSeparateLoadButton() {
   const header = html.match(/<header>([\s\S]*?)<\/header>/)[1];
 
   assert.match(header, /<select id="loadDraft">/);
+  assert.match(header, /Show Drafts/);
   assert.match(header, /id="createDraft"/);
+  assert.match(header, /id="runDraft"[^>]*>Mount Draft<\/button>/);
   assert.match(header, /id="saveDraft"/);
   assert.doesNotMatch(header, /id="loadDraftBtn"/);
   assert.doesNotMatch(header, /id="draftName"/);

@@ -13,6 +13,7 @@
       --panel: #f8fafc;
       --accent: #0f766e;
       --warn: #a16207;
+      --good: #15803d;
       --bad: #b91c1c;
     }
     * { box-sizing: border-box; }
@@ -111,10 +112,16 @@
       border-color: var(--line);
     }
     button.warn { background: var(--warn); border-color: var(--warn); }
+    button.ok { background: var(--good); border-color: var(--good); }
     button.small { padding: 4px 8px; font-size: 12px; }
     button:disabled {
       cursor: not-allowed;
       opacity: 0.48;
+    }
+    button.ok:disabled {
+      opacity: 1;
+      cursor: default;
+      color: #f8fafc;
     }
     .tabs {
       position: sticky;
@@ -455,10 +462,13 @@
   <header>
     <h1>Loveline Concordia Debug</h1>
     <div class="draft-loader">
-      <label for="loadDraft">Saved Draft</label>
+      <div class="block-title">
+        <label for="loadDraft">Show Drafts</label>
+        <button id="createDraft" class="secondary small" type="button">Create New</button>
+      </div>
       <div class="row">
         <select id="loadDraft"></select>
-        <button id="createDraft" class="secondary" type="button">Create New</button>
+        <button id="runDraft" class="warn" type="button">Mount Draft</button>
         <button id="saveDraft">Save Draft</button>
       </div>
       <span id="dirtyState" class="muted" aria-live="polite">No unsaved changes</span>
@@ -467,10 +477,11 @@
   <main>
     <section>
       <div class="band">
-        <h2>Run Operations</h2>
-        <button id="runDraft" class="warn" type="button">Start Run From Current Draft</button>
-        <div class="row" style="margin-top:8px">
+        <div class="block-title">
+          <h2>Run Operations</h2>
           <button id="controlNewRun" class="warn" type="button">New Run</button>
+        </div>
+        <div class="row">
           <button id="controlPlay" data-command="play" class="secondary">Play</button>
           <button id="controlPause" data-command="pause" class="secondary">Pause</button>
           <button id="controlStep" data-command="step" class="secondary">Step</button>

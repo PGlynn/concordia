@@ -8,6 +8,7 @@ let compareState = null;
 let logsState = null;
 let cleanDialogueState = null;
 let cleanDraftJson = "";
+let mountedDraftJson = "";
 let isDirty = false;
 let selectedCandidateIndex = 0;
 let selectedSceneIndex = 0;
@@ -33,7 +34,7 @@ const ENTITY_PREFAB_OPTIONS = [
   ["conversational__Entity", "conversational Entity"],
 ];
 
-const $ = (id) => document.getElementById(id);
+const $ = (id) => (typeof document !== "undefined" ? document.getElementById(id) : null);
 const selectOptionSignatures = new WeakMap();
 
 async function api(path, options = {}) {
@@ -152,6 +153,54 @@ function setMessage(text, isError = false) {
   $("message").className = isError ? "error" : "muted";
 }
 
+function isMountedDraft(value = draft) {
+  return Boolean(mountedDraftJson) && draftFingerprint(value) === mountedDraftJson;
+}
+
+function mountButtonState(value = draft) {
+  const mounted = isMountedDraft(value);
+  return {
+    mounted,
+    text: mounted ? "Draft Mounted" : "Mount Draft",
+    className: mounted ? "ok" : "warn",
+    disabled: mounted || !value,
+  };
+}
+
+function runOperationButtonState(payload = latestStatus, mounted = isMountedDraft()) {
+  const hasControl = mounted && Boolean(payload?.control);
+  const isPaused = Boolean(payload?.control?.is_paused);
+  const isRunning = Boolean(payload?.control?.is_running);
+  return {
+    newRunDisabled: !mounted,
+    playDisabled: !hasControl || isRunning,
+    pauseDisabled: !hasControl || isPaused,
+    stepDisabled: !hasControl || !isPaused,
+    stopDisabled: !hasControl,
+  };
+}
+
+function clearMountedDraft() {
+  mountedDraftJson = "";
+  updateDraftMountUi();
+}
+
+function mountCurrentDraft(currentDraft = collectDraft()) {
+  mountedDraftJson = draftFingerprint(currentDraft);
+  updateDraftMountUi();
+  return currentDraft;
+}
+
+function updateDraftMountUi() {
+  const button = $("runDraft");
+  if (!button) return;
+  const state = mountButtonState();
+  button.textContent = state.text;
+  button.className = state.className;
+  button.disabled = state.disabled;
+  updateControlButtons();
+}
+
 function updateDirtyIndicator() {
   const element = $("dirtyState");
   if (!element) return;
@@ -163,17 +212,21 @@ function markClean() {
   cleanDraftJson = draftFingerprint(draft);
   isDirty = false;
   updateDirtyIndicator();
+  updateDraftMountUi();
 }
 
 function markDirty() {
   if (!cleanDraftJson) cleanDraftJson = draftFingerprint(draft);
   isDirty = true;
+  mountedDraftJson = "";
   updateDirtyIndicator();
+  updateDraftMountUi();
 }
 
 function refreshDirtyState() {
   isDirty = Boolean(cleanDraftJson) && draftFingerprint(draft) !== cleanDraftJson;
   updateDirtyIndicator();
+  updateDraftMountUi();
   return isDirty;
 }
 
@@ -910,13 +963,23 @@ async function refreshDrafts() {
 }
 
 async function refreshStatus() {
+  const previousStatus = latestStatus;
+  const followedActiveRunId = followedActiveDialogueRunId(previousStatus);
   const payload = await api("/api/status");
   latestStatus = payload;
   renderRunSummary(payload);
   renderProgressSummary(payload);
   updateControlButtons(payload);
   renderDialogueRunWorkflow(payload.recent_runs || [], payload.active);
-  if (activeDialogueSubTab === "conversation") renderCleanDialogue();
+  if (activeDialogueSubTab === "conversation") {
+    const handoffRunId = completedDialogueHandoffRunId(followedActiveRunId, payload);
+    if (handoffRunId) {
+      if ($("cleanDialogueRunSelect")) $("cleanDialogueRunSelect").value = handoffRunId;
+      await loadCleanDialogue(handoffRunId);
+    } else {
+      renderCleanDialogue();
+    }
+  }
   if (!inspectorState && (payload.recent_runs || []).length) {
     const run = payload.recent_runs.find((item) => item.artifacts?.structured_log);
     if (run) loadInspector(run.run_id).catch((error) => setInspectorMessage(error.message, true));
@@ -936,14 +999,11 @@ function renderRunSummary(payload) {
   const rows = active
     ? [
         ["Run", active.run_id],
-        ["Lifecycle", active.status],
         ["Control", displayRunState(payload)],
-        ["Step", payload.control?.current_step ?? active.current_step ?? 0],
-        ["Launch", active.start_paused ? "started paused" : "started playing"],
         ["Pair", (context?.selected_pair || context?.candidates || []).filter(Boolean).join(" vs ")],
         ["Settings", runContextLabel(context)],
       ]
-    : [["Run", "none"], ["Lifecycle", "idle"], ["Control", "idle"], ["Step", "0"]];
+    : [["Run", "none"], ["Control", "idle"]];
   $("runSummary").innerHTML = rows.map(([key, value]) =>
     `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
   ).join("");
@@ -970,18 +1030,18 @@ function renderProgressSummary(payload) {
 }
 
 function updateControlButtons(payload = latestStatus) {
-  const hasControl = Boolean(payload?.control);
-  const isPaused = Boolean(payload?.control?.is_paused);
-  const isRunning = Boolean(payload?.control?.is_running);
-  $("controlPlay").disabled = !hasControl || isRunning;
-  $("controlPause").disabled = !hasControl || isPaused;
-  $("controlStep").disabled = !hasControl || !isPaused;
-  $("controlStop").disabled = !hasControl;
+  const state = runOperationButtonState(payload);
+  if ($("controlNewRun")) $("controlNewRun").disabled = state.newRunDisabled;
+  if ($("controlPlay")) $("controlPlay").disabled = state.playDisabled;
+  if ($("controlPause")) $("controlPause").disabled = state.pauseDisabled;
+  if ($("controlStep")) $("controlStep").disabled = state.stepDisabled;
+  if ($("controlStop")) $("controlStop").disabled = state.stopDisabled;
 }
 
 async function startRunFromCurrentDraft({
   apiClient = api,
   collect = collectDraft,
+  isMounted = isMountedDraft,
   showMessage = setMessage,
   refresh = refreshStatus,
   selectConversationTab = () => {
@@ -993,9 +1053,11 @@ async function startRunFromCurrentDraft({
   },
   renderDialogue = renderCleanDialogue,
 } = {}) {
+  const currentDraft = collect();
+  if (!isMounted(currentDraft)) throw new Error("Mount a draft before starting a run.");
   const record = await apiClient("/api/run", {
     method: "POST",
-    body: JSON.stringify({draft: collect()}),
+    body: JSON.stringify({draft: currentDraft}),
   });
   const launchMode = record.start_paused ? "paused" : "playing";
   showMessage(`Started ${record.run_id} ${launchMode}.`);
@@ -1073,6 +1135,24 @@ function renderCleanDialogueRunOptions(runs, active = null) {
   availableRuns.forEach((run) => items.push({value: run.run_id, label: runOptionLabel(run)}));
   const preferred = items.some((item) => item.value === "__active__") ? "__active__" : "";
   updateSelectOptions(select, items, preferred);
+}
+
+function followedActiveDialogueRunId(
+  status = latestStatus,
+  state = cleanDialogueState,
+  selectedValue = $("cleanDialogueRunSelect")?.value || ""
+) {
+  if (selectedValue === "__active__") return status?.active?.run_id || state?.run_id || "";
+  if (state?.live) return state.run_id || "";
+  return "";
+}
+
+function completedDialogueHandoffRunId(followedRunId, status = latestStatus) {
+  const active = status?.active;
+  if (!followedRunId || !active || active.run_id !== followedRunId) return "";
+  if (!["completed", "stopped"].includes(active.status)) return "";
+  if (!active.artifacts?.structured_log) return "";
+  return active.run_id;
 }
 
 function renderInspectorRunOptions(runs) {
@@ -1482,6 +1562,7 @@ async function loadSourceSelection(ids, message) {
   const path = `/api/draft/selection?ids=${encodeURIComponent(ids.join(","))}`;
   draft = await api(path);
   selectedLoadedDraftName = "";
+  clearMountedDraft();
   hydrateInputs();
   markClean();
   setMessage(message);
@@ -1497,6 +1578,7 @@ async function loadSavedDraftByName(name, options = {}) {
   if (!confirmDiscard("load another saved draft")) return false;
   draft = await apiClient(`/api/draft?name=${encodeURIComponent(name)}`);
   selectedLoadedDraftName = name;
+  clearMountedDraft();
   hydrate();
   markCleanState();
   showMessage("Draft loaded.");
@@ -1510,6 +1592,7 @@ async function refreshSourceCandidates() {
 async function resetToDefaultSourceDraft() {
   draft = await api("/api/draft/default");
   selectedLoadedDraftName = "";
+  clearMountedDraft();
   hydrateInputs();
   markClean();
   setMessage("Default source pair restored.");
@@ -1519,6 +1602,7 @@ async function createNewDraft() {
   draft = await api("/api/draft/default");
   draft.name = "new_loveline_debug_draft";
   selectedLoadedDraftName = "";
+  clearMountedDraft();
   hydrateInputs();
   markDirty();
   setMessage("New browser draft created from the default source pair.");
@@ -1575,6 +1659,7 @@ async function init() {
   source = await api("/api/source");
   populateChrome();
   draft = await api("/api/draft/default");
+  clearMountedDraft();
   hydrateInputs();
   markClean();
   await refreshDrafts();
@@ -1745,7 +1830,14 @@ if (typeof document !== "undefined") {
     }
   };
 
-  $("runDraft").addEventListener("click", handleStartRun);
+  $("runDraft").addEventListener("click", () => {
+    try {
+      mountCurrentDraft();
+      setMessage("Draft mounted.");
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
   $("controlNewRun").addEventListener("click", handleStartRun);
 
   $("applyConfigJson").addEventListener("click", () => {
@@ -2045,6 +2137,8 @@ if (typeof module !== "undefined") {
     displayValue,
     draftSaveName,
     loadSavedDraftByName,
+    isMountedDraft,
+    mountButtonState,
     mergeSelectionDraft,
     remapSceneForSelection,
     renderCompareSide,
@@ -2059,6 +2153,8 @@ if (typeof module !== "undefined") {
     cleanDialogueStepLabel,
     cleanDialogueText,
     cleanDialogueContext,
+    completedDialogueHandoffRunId,
+    followedActiveDialogueRunId,
     renderLogBrowser,
     renderTurnDetail,
     formatLogDetails,
@@ -2087,6 +2183,7 @@ if (typeof module !== "undefined") {
     sceneTypeSelectorHtml,
     logSearchText,
     runContextLabel,
+    runOperationButtonState,
     startRunFromCurrentDraft,
     summarizeDraftContext,
     updateSelectOptions,

@@ -3,23 +3,67 @@ const fs = require("fs");
 const path = require("path");
 
 const {
+  mountButtonState,
+  runOperationButtonState,
   startRunFromCurrentDraft,
 } = require("./app.js");
 
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 
-function testNewRunLivesBesideTransportControls() {
-  const controls = html.match(/<div class="row" style="margin-top:8px">([\s\S]*?)<\/div>/)[1];
+function testNewRunLivesInRunOperationsHeader() {
+  const module = html.match(/<div class="band">[\s\S]*?<h2>Run Operations<\/h2>[\s\S]*?<\/div>\s*<div class="row">([\s\S]*?)<\/div>/);
+  const header = module[0];
+  const controls = module[1];
 
-  assert.match(controls, /id="controlNewRun"[^>]*>New Run<\/button>/);
+  assert.match(header, /id="controlNewRun"[^>]*>New Run<\/button>/);
   assert.match(controls, /id="controlPlay"[^>]*>Play<\/button>/);
   assert.match(controls, /id="controlPause"[^>]*>Pause<\/button>/);
   assert.match(controls, /id="controlStep"[^>]*>Step<\/button>/);
   assert.match(controls, /id="controlStop"[^>]*>Stop<\/button>/);
-  assert.ok(controls.indexOf('id="controlNewRun"') < controls.indexOf('id="controlPlay"'));
-  assert.doesNotMatch(
-    controls.match(/<button id="controlNewRun"[\s\S]*?<\/button>/)[0],
-    /data-command=/
+  assert.doesNotMatch(controls, /id="controlNewRun"/);
+}
+
+function testMountButtonStateReflectsMountedDraft() {
+  assert.deepEqual(mountButtonState({name: "draft"}), {
+    mounted: false,
+    text: "Mount Draft",
+    className: "warn",
+    disabled: false,
+  });
+}
+
+function testRunOperationsStayDisabledUntilMounted() {
+  assert.deepEqual(runOperationButtonState(null, false), {
+    newRunDisabled: true,
+    playDisabled: true,
+    pauseDisabled: true,
+    stepDisabled: true,
+    stopDisabled: true,
+  });
+
+  assert.deepEqual(runOperationButtonState({control: {is_paused: true, is_running: false}}, true), {
+    newRunDisabled: false,
+    playDisabled: false,
+    pauseDisabled: true,
+    stepDisabled: false,
+    stopDisabled: false,
+  });
+}
+
+async function testStartRunRequiresMountedDraft() {
+  await assert.rejects(
+    startRunFromCurrentDraft({
+      collect() {
+        return {name: "current draft"};
+      },
+      isMounted() {
+        return false;
+      },
+      async apiClient() {
+        throw new Error("should not start");
+      },
+    }),
+    /Mount a draft before starting a run/
   );
 }
 
@@ -38,6 +82,9 @@ async function testStartRunUsesCurrentDraftRunApiAndPausedMessage() {
     },
     collect() {
       return {name: "current draft"};
+    },
+    isMounted() {
+      return true;
     },
     showMessage(value) {
       message = value;
@@ -77,6 +124,9 @@ async function testStartRunUsesServerStartPausedTruthForPlayingMessage() {
     collect() {
       return {};
     },
+    isMounted() {
+      return true;
+    },
     showMessage(value) {
       message = value;
     },
@@ -90,7 +140,10 @@ async function testStartRunUsesServerStartPausedTruthForPlayingMessage() {
 }
 
 (async () => {
-  testNewRunLivesBesideTransportControls();
+  testNewRunLivesInRunOperationsHeader();
+  testMountButtonStateReflectsMountedDraft();
+  testRunOperationsStayDisabledUntilMounted();
+  await testStartRunRequiresMountedDraft();
   await testStartRunUsesCurrentDraftRunApiAndPausedMessage();
   await testStartRunUsesServerStartPausedTruthForPlayingMessage();
   console.log("app_transport_controls_test passed");
