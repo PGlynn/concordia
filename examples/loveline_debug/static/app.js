@@ -123,15 +123,17 @@ function optionItemsHtml(items) {
   ).join("");
 }
 
-function updateSelectOptions(select, items, preferredValue = "") {
+function updateSelectOptions(select, items, preferredValue = "", options = {}) {
   if (!select) return "";
   const signature = optionSignature(items);
   const knownSignature = selectOptionSignatures.get(select);
   const values = new Set(items.map((item) => item.value));
   const previous = select.value;
-  const nextValue = values.has(previous)
-    ? previous
-    : (values.has(preferredValue) ? preferredValue : "");
+  const nextValue = options.preferredValueWins && values.has(preferredValue)
+    ? preferredValue
+    : (values.has(previous)
+      ? previous
+      : (values.has(preferredValue) ? preferredValue : ""));
 
   if (selectHasFocus(select)) {
     return values.has(previous) ? previous : "";
@@ -397,13 +399,20 @@ function replaceSelectedCandidate(candidate) {
   }
 }
 
-function renderCandidateOptions(selectId, gender) {
-  const selected = new Set(draft.selected_candidate_ids || []);
-  const candidates = source.candidates.filter((item) => item.gender === gender);
-  $(selectId).innerHTML = candidates.map((item) => {
-    const optionSelected = selected.has(item.id) ? " selected" : "";
-    return `<option value="${escapeHtml(item.id)}"${optionSelected}>${escapeHtml(item.name)}</option>`;
-  }).join("");
+function renderCandidateOptions(selectId, gender, options = {}) {
+  const currentDraft = options.draft || draft;
+  const sourceCandidates = options.sourceCandidates || source.candidates || [];
+  const select = options.select || $(selectId);
+  const candidates = sourceCandidates.filter((item) => item.gender === gender);
+  const preferredValue = (currentDraft?.contestants || []).find(
+    (item) => item.gender === gender
+  )?.id || "";
+  return updateSelectOptions(
+    select,
+    candidates.map((item) => ({value: item.id, label: item.name})),
+    preferredValue,
+    {preferredValueWins: true},
+  );
 }
 
 function renderConfigTab() {
@@ -2065,6 +2074,7 @@ if (typeof module !== "undefined") {
     applySceneFormBlocks,
     candidateEditorHtml,
     candidateSelectorHtml,
+    renderCandidateOptions,
     draftFingerprint,
     historyLengthFieldsHtml,
     stockBasicEntityComponentSettings,

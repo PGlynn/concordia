@@ -151,6 +151,40 @@ class ConfigIoTest(absltest.TestCase):
         55,
     )
 
+  def test_created_shared_contestant_persists_through_save_and_reload(self):
+    draft = config_io.make_default_draft()
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    created = config_io.create_contestant({
+        **draft["contestants"][0],
+        "name": "Marcus Yale",
+        "entity_params": {
+            **draft["contestants"][0]["entity_params"],
+            "name": "Marcus Yale",
+            "observation_history_length": 17,
+        },
+    }, paths)
+    draft["contestants"][0] = created
+    draft["selected_candidate_ids"] = [
+        created["id"],
+        draft["contestants"][1]["id"],
+    ]
+
+    path = config_io.save_draft(draft, "marcus_yale_draft", paths)
+    stored = config_io.load_json(path)
+    loaded = config_io.load_draft("marcus_yale_draft", paths)
+
+    self.assertEqual(
+        stored["selected_candidate_ids"],
+        [created["id"], draft["contestants"][1]["id"]],
+    )
+    self.assertEqual(loaded["contestants"][0]["id"], created["id"])
+    self.assertEqual(loaded["contestants"][0]["name"], "Marcus Yale")
+    self.assertEqual(
+        loaded["contestants"][0]["entity_params"]["observation_history_length"],
+        17,
+    )
+
   def test_component_toggles_persist_through_draft_json_and_config_params(self):
     draft = config_io.make_default_draft()
     draft["contestants"][0]["entity_params"][

@@ -1,6 +1,7 @@
 const assert = require("assert/strict");
 
 const {
+  renderCandidateOptions,
   renderDialogueRunWorkflow,
 } = require("./app.js");
 
@@ -88,6 +89,29 @@ function testFocusedSelectIsNotClobberedByChangedRuns() {
   assert.equal(select.value, "run_a");
 }
 
+function testCreatedContestantSelectionReplacesStalePairValue() {
+  const select = makeSelect("marcus_vale");
+
+  const selected = renderCandidateOptions("maleCandidate", "man", {
+    select,
+    draft: {
+      contestants: [
+        {id: "marcus_yale", name: "Marcus Yale", gender: "man"},
+        {id: "zoe_hart", name: "Zoe Hart", gender: "woman"},
+      ],
+    },
+    sourceCandidates: [
+      {id: "marcus_vale", name: "Marcus Vale", gender: "man"},
+      {id: "marcus_yale", name: "Marcus Yale", gender: "man"},
+      {id: "zoe_hart", name: "Zoe Hart", gender: "woman"},
+    ],
+  });
+
+  assert.equal(selected, "marcus_yale");
+  assert.equal(select.value, "marcus_yale");
+}
+
 testStatusPollDoesNotRewriteUnchangedSelects();
 testFocusedSelectIsNotClobberedByChangedRuns();
+testCreatedContestantSelectionReplacesStalePairValue();
 console.log("app_select_stability_test passed");
