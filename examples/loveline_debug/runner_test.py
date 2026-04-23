@@ -272,6 +272,12 @@ class RunnerTest(absltest.TestCase):
     draft["scene_types"]["pod_date"]["instructions_override"] = (
         "Keep the pod scene grounded and slightly guarded."
     )
+    draft["scene_types"]["pod_date"]["context_override"] = (
+        "Keep the pod scene focused on first impressions."
+    )
+    draft["scene_types"]["pod_date"]["memory_filter"] = (
+        "pod\nfirst impression"
+    )
     record = runner.RunRecord(
         run_id="run",
         status="queued",
@@ -363,6 +369,14 @@ class RunnerTest(absltest.TestCase):
     self.assertEqual(
         captured_snapshots[0]["scene_types"]["pod_date"]["instructions_override"],
         "Keep the pod scene grounded and slightly guarded.",
+    )
+    self.assertEqual(
+        captured_snapshots[0]["scene_types"]["pod_date"]["context_override"],
+        "Keep the pod scene focused on first impressions.",
+    )
+    self.assertEqual(
+        captured_snapshots[0]["scene_types"]["pod_date"]["memory_filter"],
+        "pod\nfirst impression",
     )
 
 

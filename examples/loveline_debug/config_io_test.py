@@ -218,6 +218,66 @@ class ConfigIoTest(absltest.TestCase):
         "Exercise: Keep the banter light. --- Response: A playful beat lands.",
     )
 
+  def test_scene_type_context_override_persists_through_draft_json(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["context_override"] = (
+        "Treat pod scenes as fragile first-impression territory."
+    )
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    path = config_io.save_draft(draft, "scene_type_context", paths)
+    stored = config_io.load_json(path)
+    loaded = config_io.load_draft("scene_type_context", paths)
+
+    self.assertEqual(
+        stored["scene_types"]["pod_date"]["context_override"],
+        "Treat pod scenes as fragile first-impression territory.",
+    )
+    self.assertEqual(
+        loaded["scene_types"]["pod_date"]["context_override"],
+        "Treat pod scenes as fragile first-impression territory.",
+    )
+
+  def test_scene_type_memory_override_persists_through_draft_json(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["memory_override"] = (
+        "Use only the pod opener and the current tension beat."
+    )
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    path = config_io.save_draft(draft, "scene_type_memory_override", paths)
+    stored = config_io.load_json(path)
+    loaded = config_io.load_draft("scene_type_memory_override", paths)
+
+    self.assertEqual(
+        stored["scene_types"]["pod_date"]["memory_override"],
+        "Use only the pod opener and the current tension beat.",
+    )
+    self.assertEqual(
+        loaded["scene_types"]["pod_date"]["memory_override"],
+        "Use only the pod opener and the current tension beat.",
+    )
+
+  def test_scene_type_memory_filter_persists_through_draft_json(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["memory_filter"] = (
+        "pod date\nfirst impression"
+    )
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    path = config_io.save_draft(draft, "scene_type_memory_filter", paths)
+    stored = config_io.load_json(path)
+    loaded = config_io.load_draft("scene_type_memory_filter", paths)
+
+    self.assertEqual(
+        stored["scene_types"]["pod_date"]["memory_filter"],
+        "pod date\nfirst impression",
+    )
+    self.assertEqual(
+        loaded["scene_types"]["pod_date"]["memory_filter"],
+        "pod date\nfirst impression",
+    )
+
   def test_build_config_adds_local_scene_type_instructions_component(self):
     draft = config_io.make_default_draft()
     draft["scene_types"]["pod_date"]["instructions_override"] = (
@@ -258,6 +318,50 @@ class ConfigIoTest(absltest.TestCase):
         scene_type_instructions.SceneTypeExamplesOverride,
     )
 
+  def test_build_config_adds_local_scene_type_context_component(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["context_override"] = (
+        "Treat pod scenes as fragile first-impression territory."
+    )
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    self.assertEqual(
+        gm_instances[0].params["extra_components_index"]["scene_type_context"],
+        3,
+    )
+    self.assertIsInstance(
+        gm_instances[0].params["extra_components"]["scene_type_context"],
+        scene_type_instructions.SceneTypeContextOverride,
+    )
+
+  def test_build_config_adds_local_scene_type_memory_component(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["memory_filter"] = (
+        "pod date\nfirst impression"
+    )
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    self.assertEqual(
+        gm_instances[0].params["extra_components_index"]["scene_type_memory"],
+        4,
+    )
+    self.assertIsInstance(
+        gm_instances[0].params["extra_components"]["scene_type_memory"],
+        scene_type_instructions.SceneTypeMemoryOverrideOrFilter,
+    )
+
   def test_build_config_skips_local_scene_type_instructions_component_when_blank(
       self,
   ):
@@ -278,6 +382,33 @@ class ConfigIoTest(absltest.TestCase):
   ):
     draft = config_io.make_default_draft()
     draft["scene_types"]["pod_date"]["examples_override"] = "   "
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    self.assertNotIn("extra_components", gm_instances[0].params)
+
+  def test_build_config_skips_local_scene_type_context_component_when_blank(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["context_override"] = "   "
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    self.assertNotIn("extra_components", gm_instances[0].params)
+
+  def test_build_config_skips_local_scene_type_memory_component_when_blank(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["memory_override"] = "   "
+    draft["scene_types"]["pod_date"]["memory_filter"] = "   "
 
     config = config_io.build_config(draft)
 

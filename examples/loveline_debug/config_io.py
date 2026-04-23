@@ -420,6 +420,17 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
   scene_type_examples = scene_type_instructions.scene_type_examples_overrides(
       draft["scene_types"]
   )
+  scene_type_context = scene_type_instructions.scene_type_context_overrides(
+      draft["scene_types"]
+  )
+  scene_type_memory_overrides = (
+      scene_type_instructions.scene_type_memory_overrides(
+          draft["scene_types"]
+      )
+  )
+  scene_type_memory_filters = scene_type_instructions.scene_type_memory_filters(
+      draft["scene_types"]
+  )
   source_root = Path(draft.get("source_root", STARTER_ROOT))
   shared_memories = (
       load_json(StarterPaths(source_root).persona_bundle_json)
@@ -467,6 +478,9 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
               **_scene_type_gm_prompt_overrides(
                   scene_type_overrides=scene_type_overrides,
                   scene_type_examples=scene_type_examples,
+                  scene_type_context=scene_type_context,
+                  scene_type_memory_overrides=scene_type_memory_overrides,
+                  scene_type_memory_filters=scene_type_memory_filters,
               ),
           },
       )
@@ -501,6 +515,9 @@ def _scene_type_gm_prompt_overrides(
     *,
     scene_type_overrides: dict[str, str],
     scene_type_examples: dict[str, str],
+    scene_type_context: dict[str, str],
+    scene_type_memory_overrides: dict[str, str],
+    scene_type_memory_filters: dict[str, str],
 ) -> dict[str, Any]:
   extra_components = {}
   extra_components_index = {}
@@ -510,11 +527,25 @@ def _scene_type_gm_prompt_overrides(
             scene_type_overrides
         )
     )
+    extra_components_index["instructions"] = 1
   if scene_type_examples:
     extra_components["examples"] = (
         scene_type_instructions.SceneTypeExamplesOverride(scene_type_examples)
     )
     extra_components_index["examples"] = 2
+  if scene_type_context:
+    extra_components["scene_type_context"] = (
+        scene_type_instructions.SceneTypeContextOverride(scene_type_context)
+    )
+    extra_components_index["scene_type_context"] = 3
+  if scene_type_memory_overrides or scene_type_memory_filters:
+    extra_components["scene_type_memory"] = (
+        scene_type_instructions.SceneTypeMemoryOverrideOrFilter(
+            scene_type_memory_overrides,
+            scene_type_memory_filters,
+        )
+    )
+    extra_components_index["scene_type_memory"] = 4
   if not extra_components:
     return {}
   payload = {"extra_components": extra_components}

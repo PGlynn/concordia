@@ -40,6 +40,9 @@ function sceneTypeBlock(values) {
     ['[data-scene-type-field="call_to_action"]', {value: values.call_to_action}],
     ['[data-scene-type-field="instructions_override"]', {value: values.instructions_override || ""}],
     ['[data-scene-type-field="examples_override"]', {value: values.examples_override || ""}],
+    ['[data-scene-type-field="context_override"]', {value: values.context_override || ""}],
+    ['[data-scene-type-field="memory_override"]', {value: values.memory_override || ""}],
+    ['[data-scene-type-field="memory_filter"]', {value: values.memory_filter || ""}],
   ]);
   return {
     querySelector: (selector) => fields.get(selector),
@@ -96,11 +99,17 @@ function testSceneTypeEditorIncludesInstructionsOverrideField() {
     call_to_action: "Say one short spoken reply.",
     instructions_override: "Keep the tone flirty but grounded.",
     examples_override: "Exercise: Narrate one flirt-forward beat. --- Warm, teasing response.",
+    context_override: "Remember that this pod scene should feel tentative and intimate.",
+    memory_override: "Use only the startup pod framing and the contestants' first impressions.",
+    memory_filter: "pod date\nfirst impression",
   });
 
   assert.match(html, /Call to Action/);
   assert.match(html, /Instructions Override/);
   assert.match(html, /Few-Shot \/ Style Examples/);
+  assert.match(html, /Scene Context Override/);
+  assert.match(html, /Memory Override/);
+  assert.match(html, /Memory Filter/);
   assert.match(
     html,
     /Optional local Loveline debug override\. Leave blank to use stock Concordia game master instructions\./,
@@ -109,8 +118,23 @@ function testSceneTypeEditorIncludesInstructionsOverrideField() {
     html,
     /Optional local Loveline debug workflow\/style examples\. Leave blank to use stock Concordia examples for this scene type\./,
   );
+  assert.match(
+    html,
+    /Optional local Loveline debug scene-type context text\. Leave blank to omit extra scene-type context\./,
+  );
+  assert.match(
+    html,
+    /Optional local Loveline debug memory text for this scene type\. Takes priority over the memory filter when present\./,
+  );
+  assert.match(
+    html,
+    /Optional newline-separated case-insensitive match terms used to pull recent memories into a scene-type-local prompt block\./,
+  );
   assert.match(html, /Keep the tone flirty but grounded\./);
   assert.match(html, /Exercise: Narrate one flirt-forward beat\./);
+  assert.match(html, /tentative and intimate/);
+  assert.match(html, /startup pod framing/);
+  assert.match(html, /pod date/);
 }
 
 function testSceneTypeFormBlockPersistsInstructionsOverride() {
@@ -125,6 +149,9 @@ function testSceneTypeFormBlockPersistsInstructionsOverride() {
       call_to_action: "New CTA",
       instructions_override: "Keep it more playful.",
       examples_override: "Exercise: Say something witty. --- Witty response.",
+      context_override: "Keep the scene focused on immediate chemistry.",
+      memory_override: "Only remember the last pod beat and the current opener.",
+      memory_filter: "chemistry\nopener",
     }),
     {rounds: 2, call_to_action: "Old CTA"},
   );
@@ -135,6 +162,9 @@ function testSceneTypeFormBlockPersistsInstructionsOverride() {
       call_to_action: "New CTA",
       instructions_override: "Keep it more playful.",
       examples_override: "Exercise: Say something witty. --- Witty response.",
+      context_override: "Keep the scene focused on immediate chemistry.",
+      memory_override: "Only remember the last pod beat and the current opener.",
+      memory_filter: "chemistry\nopener",
     },
   });
 }
@@ -147,6 +177,9 @@ function testSceneTypeFormBlockDropsBlankLocalOverrides() {
         call_to_action: "Old CTA",
         instructions_override: "Old override",
         examples_override: "Old examples",
+        context_override: "Old context",
+        memory_override: "Old memory override",
+        memory_filter: "Old memory filter",
       },
     },
     "pod_date",
@@ -156,12 +189,18 @@ function testSceneTypeFormBlockDropsBlankLocalOverrides() {
       call_to_action: "Old CTA",
       instructions_override: "   ",
       examples_override: "   ",
+      context_override: "   ",
+      memory_override: "   ",
+      memory_filter: "   ",
     }),
     {
       rounds: 2,
       call_to_action: "Old CTA",
       instructions_override: "Old override",
       examples_override: "Old examples",
+      context_override: "Old context",
+      memory_override: "Old memory override",
+      memory_filter: "Old memory filter",
     },
   );
 

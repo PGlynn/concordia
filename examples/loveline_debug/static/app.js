@@ -550,6 +550,9 @@ function sceneTypeEditorHtml(name, cfg = {}) {
       <label>Call to Action<textarea data-scene-type-field="call_to_action">${escapeHtml(cfg.call_to_action || "")}</textarea></label>
       <label>Instructions Override<textarea data-scene-type-field="instructions_override" placeholder="Optional local Loveline debug override. Leave blank to use stock Concordia game master instructions.">${escapeHtml(cfg.instructions_override || "")}</textarea></label>
       <label>Few-Shot / Style Examples<textarea data-scene-type-field="examples_override" placeholder="Optional local Loveline debug workflow/style examples. Leave blank to use stock Concordia examples for this scene type.">${escapeHtml(cfg.examples_override || "")}</textarea></label>
+      <label>Scene Context Override<textarea data-scene-type-field="context_override" placeholder="Optional local Loveline debug scene-type context text. Leave blank to omit extra scene-type context.">${escapeHtml(cfg.context_override || "")}</textarea></label>
+      <label>Memory Override<textarea data-scene-type-field="memory_override" placeholder="Optional local Loveline debug memory text for this scene type. Takes priority over the memory filter when present.">${escapeHtml(cfg.memory_override || "")}</textarea></label>
+      <label>Memory Filter<textarea data-scene-type-field="memory_filter" placeholder="Optional newline-separated case-insensitive match terms used to pull recent memories into a scene-type-local prompt block.">${escapeHtml(cfg.memory_filter || "")}</textarea></label>
       <details>
         <summary>Exact scene type JSON</summary>
         <textarea class="json-box" id="sceneTypeRaw">${escapeHtml(pretty(cfg))}</textarea>
@@ -813,6 +816,9 @@ function applySceneTypeFormBlock(sceneTypes, oldName, block, rawSceneType) {
   delete next[oldName];
   const instructionsOverride = block.querySelector('[data-scene-type-field="instructions_override"]').value;
   const examplesOverride = block.querySelector('[data-scene-type-field="examples_override"]').value;
+  const contextOverride = block.querySelector('[data-scene-type-field="context_override"]').value;
+  const memoryOverride = block.querySelector('[data-scene-type-field="memory_override"]').value;
+  const memoryFilter = block.querySelector('[data-scene-type-field="memory_filter"]').value;
   const sceneType = {
     ...rawSceneType,
     rounds: Number(block.querySelector('[data-scene-type-field="rounds"]').value || 1),
@@ -827,6 +833,21 @@ function applySceneTypeFormBlock(sceneTypes, oldName, block, rawSceneType) {
     sceneType.examples_override = examplesOverride;
   } else {
     delete sceneType.examples_override;
+  }
+  if (contextOverride.trim()) {
+    sceneType.context_override = contextOverride;
+  } else {
+    delete sceneType.context_override;
+  }
+  if (memoryOverride.trim()) {
+    sceneType.memory_override = memoryOverride;
+  } else {
+    delete sceneType.memory_override;
+  }
+  if (memoryFilter.trim()) {
+    sceneType.memory_filter = memoryFilter;
+  } else {
+    delete sceneType.memory_filter;
   }
   next[name] = sceneType;
   return next;
