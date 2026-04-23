@@ -18,6 +18,7 @@ from concordia.typing import entity as entity_lib
 from concordia.typing import prefab as prefab_lib
 from concordia.typing import scene as scene_lib
 from examples.loveline_debug import basic_entity_controls
+from examples.loveline_debug import dialogic_and_dramaturgic as loveline_dialogic_and_dramaturgic
 from examples.loveline_debug import scene_type_instructions
 
 
@@ -469,7 +470,7 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
   )
   instances.append(
       prefab_lib.InstanceConfig(
-          prefab="dialogic_and_dramaturgic__GameMaster",
+          prefab="loveline_dialogic_and_dramaturgic__GameMaster",
           role=prefab_lib.Role.GAME_MASTER,
           params={
               "name": gm_name,
@@ -492,6 +493,9 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
           "conversational__Entity": entity_prefabs.conversational.Entity(),
           "dialogic_and_dramaturgic__GameMaster": (
               game_master_prefabs.dialogic_and_dramaturgic.GameMaster()
+          ),
+          "loveline_dialogic_and_dramaturgic__GameMaster": (
+              loveline_dialogic_and_dramaturgic.GameMaster()
           ),
           "formative_memories_initializer__GameMaster": (
               formative_memories_initializer.GameMaster()
@@ -519,20 +523,19 @@ def _scene_type_gm_prompt_overrides(
     scene_type_memory_overrides: dict[str, str],
     scene_type_memory_filters: dict[str, str],
 ) -> dict[str, Any]:
+  replacement_components = {}
   extra_components = {}
   extra_components_index = {}
   if scene_type_overrides:
-    extra_components["instructions"] = (
+    replacement_components["instructions"] = (
         scene_type_instructions.SceneTypeInstructionsOverride(
             scene_type_overrides
         )
     )
-    extra_components_index["instructions"] = 1
   if scene_type_examples:
-    extra_components["examples"] = (
+    replacement_components["examples"] = (
         scene_type_instructions.SceneTypeExamplesOverride(scene_type_examples)
     )
-    extra_components_index["examples"] = 2
   if scene_type_context:
     extra_components["scene_type_context"] = (
         scene_type_instructions.SceneTypeContextOverride(scene_type_context)
@@ -546,9 +549,13 @@ def _scene_type_gm_prompt_overrides(
         )
     )
     extra_components_index["scene_type_memory"] = 4
-  if not extra_components:
+  if not replacement_components and not extra_components:
     return {}
-  payload = {"extra_components": extra_components}
+  payload = {}
+  if replacement_components:
+    payload["replacement_components"] = replacement_components
+  if extra_components:
+    payload["extra_components"] = extra_components
   if extra_components_index:
     payload["extra_components_index"] = extra_components_index
   return payload

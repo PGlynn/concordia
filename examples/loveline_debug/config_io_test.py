@@ -1,6 +1,8 @@
 """Smoke tests for the Loveline debug config path."""
 
+import copy
 from pathlib import Path
+from types import SimpleNamespace
 
 from absl.testing import absltest
 
@@ -325,9 +327,9 @@ class ConfigIoTest(absltest.TestCase):
         for item in config.instances
         if item.role == prefab_lib.Role.GAME_MASTER
     ]
-    extra_components = gm_instances[0].params["extra_components"]
+    replacement_components = gm_instances[0].params["replacement_components"]
     self.assertIsInstance(
-        extra_components["instructions"],
+        replacement_components["instructions"],
         scene_type_instructions.SceneTypeInstructionsOverride,
     )
 
@@ -344,12 +346,53 @@ class ConfigIoTest(absltest.TestCase):
         for item in config.instances
         if item.role == prefab_lib.Role.GAME_MASTER
     ]
-    self.assertEqual(
-        gm_instances[0].params["extra_components_index"]["examples"], 2
-    )
     self.assertIsInstance(
-        gm_instances[0].params["extra_components"]["examples"],
+        gm_instances[0].params["replacement_components"]["examples"],
         scene_type_instructions.SceneTypeExamplesOverride,
+    )
+
+  def test_build_config_with_scene_type_prompt_replacements_builds_gm(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["instructions_override"] = (
+        "Keep the scene emotionally restrained."
+    )
+    draft["scene_types"]["pod_date"]["examples_override"] = (
+        "Exercise: Keep the banter light. --- Response: A playful beat lands."
+    )
+
+    config = config_io.build_config(draft)
+
+    gm_instance = next(
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    )
+    gm_prefab = copy.deepcopy(config.prefabs[gm_instance.prefab])
+    gm_prefab.params = gm_instance.params
+    gm_prefab.entities = [
+        SimpleNamespace(name="Alex"),
+        SimpleNamespace(name="Blair"),
+    ]
+
+    gm = gm_prefab.build(
+        model=no_language_model.NoLanguageModel(),
+        memory_bank=basic_associative_memory.AssociativeMemoryBank(
+            sentence_embedder=_embedder
+        ),
+    )
+    component_order = gm.get_act_component().get_context_concat_order()
+
+    self.assertEqual(
+        len(component_order),
+        len(set(component_order)),
+    )
+    self.assertLess(
+        component_order.index("instructions"),
+        component_order.index("scene_type_examples"),
+    )
+    self.assertLess(
+        component_order.index("scene_type_examples"),
+        component_order.index("player_characters"),
     )
 
   def test_build_config_adds_local_scene_type_context_component(self):
