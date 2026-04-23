@@ -924,6 +924,33 @@ function updateControlButtons(payload = latestStatus) {
   $("controlStop").disabled = !hasControl;
 }
 
+async function startRunFromCurrentDraft({
+  apiClient = api,
+  collect = collectDraft,
+  showMessage = setMessage,
+  refresh = refreshStatus,
+  selectConversationTab = () => {
+    const conversationTab = document.querySelector('[data-dialogue-tab="conversation"]');
+    if (conversationTab) conversationTab.click();
+  },
+  selectActiveDialogueRun = () => {
+    if ($("cleanDialogueRunSelect")) $("cleanDialogueRunSelect").value = "__active__";
+  },
+  renderDialogue = renderCleanDialogue,
+} = {}) {
+  const record = await apiClient("/api/run", {
+    method: "POST",
+    body: JSON.stringify({draft: collect()}),
+  });
+  const launchMode = record.start_paused ? "paused" : "playing";
+  showMessage(`Started ${record.run_id} ${launchMode}.`);
+  await refresh();
+  selectConversationTab();
+  selectActiveDialogueRun();
+  renderDialogue();
+  return record;
+}
+
 function setInspectorMessage(text, isError = false) {
   $("inspectorMessage").textContent = text;
   $("inspectorMessage").className = isError ? "error" : "muted";
@@ -1624,23 +1651,16 @@ if (typeof document !== "undefined") {
     }
   });
 
-  $("runDraft").addEventListener("click", async () => {
+  const handleStartRun = async () => {
     try {
-      const record = await api("/api/run", {
-        method: "POST",
-        body: JSON.stringify({draft: collectDraft()}),
-      });
-      const launchMode = record.start_paused ? "paused" : "playing";
-      setMessage(`Started ${record.run_id} ${launchMode}.`);
-      await refreshStatus();
-      const conversationTab = document.querySelector('[data-dialogue-tab="conversation"]');
-      if (conversationTab) conversationTab.click();
-      if ($("cleanDialogueRunSelect")) $("cleanDialogueRunSelect").value = "__active__";
-      renderCleanDialogue();
+      await startRunFromCurrentDraft();
     } catch (error) {
       setMessage(error.message, true);
     }
-  });
+  };
+
+  $("runDraft").addEventListener("click", handleStartRun);
+  $("controlNewRun").addEventListener("click", handleStartRun);
 
   $("applyConfigJson").addEventListener("click", () => {
     try {
@@ -1978,6 +1998,7 @@ if (typeof module !== "undefined") {
     sceneTypeSelectorHtml,
     logSearchText,
     runContextLabel,
+    startRunFromCurrentDraft,
     summarizeDraftContext,
     updateSelectOptions,
   };
