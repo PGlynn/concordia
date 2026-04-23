@@ -62,15 +62,16 @@ const state = {
   ],
 };
 
-function testIndexExposesDialogueTabNextToConfig() {
+function testIndexExposesDialogueAsPrimaryTab() {
   const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
   const configIndex = html.indexOf('data-tab="config"');
   const dialogueIndex = html.indexOf('data-tab="dialogue"');
   const candidatesIndex = html.indexOf('data-tab="candidates"');
 
   assert.ok(configIndex > -1);
-  assert.ok(dialogueIndex > configIndex);
+  assert.ok(dialogueIndex > -1);
   assert.ok(candidatesIndex > dialogueIndex);
+  assert.ok(configIndex > candidatesIndex);
   assert.match(html, /data-tab-panel="dialogue"/);
 }
 
@@ -117,7 +118,7 @@ function testCleanDialogueShowsEngineStepWhenFirstSpeechStartsAtStepTwo() {
   assert.equal(cleanDialogueStepLabel({step: 2}, 0), "Spoken turn 1 | engine step 2");
 }
 
-testIndexExposesDialogueTabNextToConfig();
+testIndexExposesDialogueAsPrimaryTab();
 testCleanDialogueFiltersCandidateDialogueOnly();
 testCleanDialogueContextPrefersStateSummary();
 testRenderCleanDialogueShowsContextAndConversation();

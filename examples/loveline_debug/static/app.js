@@ -1,6 +1,6 @@
 let source = null;
 let draft = null;
-let activeTab = "config";
+let activeTab = "dialogue";
 let activeLogsSubTab = "browser";
 let latestStatus = null;
 let inspectorState = null;
@@ -1508,7 +1508,7 @@ if (typeof document !== "undefined") {
       };
       hydrateInputs();
       markDirty();
-      setMessage("Config JSON applied.");
+      setMessage("Simulation Config JSON applied.");
     } catch (error) {
       setMessage(error.message, true);
     }

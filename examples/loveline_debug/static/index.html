@@ -404,16 +404,16 @@
     </section>
     <section>
       <div class="tabs">
-        <button data-tab="config" class="active">Config</button>
-        <button data-tab="dialogue">Dialogue</button>
+        <button data-tab="dialogue" class="active">Dialogue</button>
         <button data-tab="candidates">Candidates</button>
         <button data-tab="showFlow">Show Flow</button>
         <button data-tab="sceneEditor">Scene Editor</button>
         <button data-tab="logs">Logs</button>
         <button data-tab="help">Help</button>
+        <button data-tab="config">Simulation Config</button>
       </div>
 
-      <div data-tab-panel="config" id="tabConfig">
+      <div data-tab-panel="config" id="tabConfig" style="display:none">
         <div class="editor-block">
           <div class="block-title"><h2>Draft Metadata</h2></div>
           <div class="grid two">
@@ -448,13 +448,13 @@
           <label>Default Premise<textarea id="defaultPremise"></textarea></label>
         </div>
         <details>
-          <summary>Config JSON</summary>
+          <summary>Simulation Config JSON</summary>
           <button id="applyConfigJson" class="secondary small" type="button">Apply JSON</button>
           <textarea id="configRawJson"></textarea>
         </details>
       </div>
 
-      <div data-tab-panel="dialogue" id="tabDialogue" style="display:none">
+      <div data-tab-panel="dialogue" id="tabDialogue">
         <div class="log-toolbar">
           <label>Run<select id="cleanDialogueRunSelect"></select></label>
           <div id="cleanDialogueMessage" class="muted"></div>
