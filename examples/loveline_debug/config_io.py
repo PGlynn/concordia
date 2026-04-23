@@ -417,6 +417,9 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
   scene_type_overrides = scene_type_instructions.scene_type_instruction_overrides(
       draft["scene_types"]
   )
+  scene_type_examples = scene_type_instructions.scene_type_examples_overrides(
+      draft["scene_types"]
+  )
   source_root = Path(draft.get("source_root", STARTER_ROOT))
   shared_memories = (
       load_json(StarterPaths(source_root).persona_bundle_json)
@@ -461,18 +464,9 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
               "name": gm_name,
               "scenes": build_scene_specs(draft, gm_name),
               "allow_llm_fallback": False,
-              **(
-                  {
-                      "extra_components": {
-                          "instructions": (
-                              scene_type_instructions.SceneTypeInstructionsOverride(
-                                  scene_type_overrides
-                              )
-                          )
-                      }
-                  }
-                  if scene_type_overrides
-                  else {}
+              **_scene_type_gm_prompt_overrides(
+                  scene_type_overrides=scene_type_overrides,
+                  scene_type_examples=scene_type_examples,
               ),
           },
       )
@@ -501,3 +495,29 @@ def snapshot_for_run(draft: dict[str, Any], run_id: str) -> dict[str, Any]:
   snapshot["snapshot_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
   validate_draft(snapshot)
   return snapshot
+
+
+def _scene_type_gm_prompt_overrides(
+    *,
+    scene_type_overrides: dict[str, str],
+    scene_type_examples: dict[str, str],
+) -> dict[str, Any]:
+  extra_components = {}
+  extra_components_index = {}
+  if scene_type_overrides:
+    extra_components["instructions"] = (
+        scene_type_instructions.SceneTypeInstructionsOverride(
+            scene_type_overrides
+        )
+    )
+  if scene_type_examples:
+    extra_components["examples"] = (
+        scene_type_instructions.SceneTypeExamplesOverride(scene_type_examples)
+    )
+    extra_components_index["examples"] = 2
+  if not extra_components:
+    return {}
+  payload = {"extra_components": extra_components}
+  if extra_components_index:
+    payload["extra_components_index"] = extra_components_index
+  return payload

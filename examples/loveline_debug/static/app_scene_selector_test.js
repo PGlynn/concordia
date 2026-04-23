@@ -39,6 +39,7 @@ function sceneTypeBlock(values) {
     ['[data-scene-type-field="rounds"]', {value: values.rounds}],
     ['[data-scene-type-field="call_to_action"]', {value: values.call_to_action}],
     ['[data-scene-type-field="instructions_override"]', {value: values.instructions_override || ""}],
+    ['[data-scene-type-field="examples_override"]', {value: values.examples_override || ""}],
   ]);
   return {
     querySelector: (selector) => fields.get(selector),
@@ -94,15 +95,22 @@ function testSceneTypeEditorIncludesInstructionsOverrideField() {
     rounds: 1,
     call_to_action: "Say one short spoken reply.",
     instructions_override: "Keep the tone flirty but grounded.",
+    examples_override: "Exercise: Narrate one flirt-forward beat. --- Warm, teasing response.",
   });
 
   assert.match(html, /Call to Action/);
   assert.match(html, /Instructions Override/);
+  assert.match(html, /Few-Shot \/ Style Examples/);
   assert.match(
     html,
     /Optional local Loveline debug override\. Leave blank to use stock Concordia game master instructions\./,
   );
+  assert.match(
+    html,
+    /Optional local Loveline debug workflow\/style examples\. Leave blank to use stock Concordia examples for this scene type\./,
+  );
   assert.match(html, /Keep the tone flirty but grounded\./);
+  assert.match(html, /Exercise: Narrate one flirt-forward beat\./);
 }
 
 function testSceneTypeFormBlockPersistsInstructionsOverride() {
@@ -116,6 +124,7 @@ function testSceneTypeFormBlockPersistsInstructionsOverride() {
       rounds: "3",
       call_to_action: "New CTA",
       instructions_override: "Keep it more playful.",
+      examples_override: "Exercise: Say something witty. --- Witty response.",
     }),
     {rounds: 2, call_to_action: "Old CTA"},
   );
@@ -125,17 +134,19 @@ function testSceneTypeFormBlockPersistsInstructionsOverride() {
       rounds: 3,
       call_to_action: "New CTA",
       instructions_override: "Keep it more playful.",
+      examples_override: "Exercise: Say something witty. --- Witty response.",
     },
   });
 }
 
-function testSceneTypeFormBlockDropsBlankInstructionsOverride() {
+function testSceneTypeFormBlockDropsBlankLocalOverrides() {
   const next = applySceneTypeFormBlock(
     {
       pod_date: {
         rounds: 2,
         call_to_action: "Old CTA",
         instructions_override: "Old override",
+        examples_override: "Old examples",
       },
     },
     "pod_date",
@@ -144,11 +155,13 @@ function testSceneTypeFormBlockDropsBlankInstructionsOverride() {
       rounds: "2",
       call_to_action: "Old CTA",
       instructions_override: "   ",
+      examples_override: "   ",
     }),
     {
       rounds: 2,
       call_to_action: "Old CTA",
       instructions_override: "Old override",
+      examples_override: "Old examples",
     },
   );
 
@@ -203,6 +216,6 @@ testSceneEditorRendersOneSceneBlock();
 testSceneTypeSelectorRendersOneSelectedDefinition();
 testSceneTypeEditorIncludesInstructionsOverrideField();
 testSceneTypeFormBlockPersistsInstructionsOverride();
-testSceneTypeFormBlockDropsBlankInstructionsOverride();
+testSceneTypeFormBlockDropsBlankLocalOverrides();
 testRenderedSceneCollectionPreservesHiddenScenes();
 console.log("app_scene_selector_test passed");

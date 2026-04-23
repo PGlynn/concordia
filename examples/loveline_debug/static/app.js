@@ -549,6 +549,7 @@ function sceneTypeEditorHtml(name, cfg = {}) {
       </div>
       <label>Call to Action<textarea data-scene-type-field="call_to_action">${escapeHtml(cfg.call_to_action || "")}</textarea></label>
       <label>Instructions Override<textarea data-scene-type-field="instructions_override" placeholder="Optional local Loveline debug override. Leave blank to use stock Concordia game master instructions.">${escapeHtml(cfg.instructions_override || "")}</textarea></label>
+      <label>Few-Shot / Style Examples<textarea data-scene-type-field="examples_override" placeholder="Optional local Loveline debug workflow/style examples. Leave blank to use stock Concordia examples for this scene type.">${escapeHtml(cfg.examples_override || "")}</textarea></label>
       <details>
         <summary>Exact scene type JSON</summary>
         <textarea class="json-box" id="sceneTypeRaw">${escapeHtml(pretty(cfg))}</textarea>
@@ -811,6 +812,7 @@ function applySceneTypeFormBlock(sceneTypes, oldName, block, rawSceneType) {
   const next = {...sceneTypes};
   delete next[oldName];
   const instructionsOverride = block.querySelector('[data-scene-type-field="instructions_override"]').value;
+  const examplesOverride = block.querySelector('[data-scene-type-field="examples_override"]').value;
   const sceneType = {
     ...rawSceneType,
     rounds: Number(block.querySelector('[data-scene-type-field="rounds"]').value || 1),
@@ -820,6 +822,11 @@ function applySceneTypeFormBlock(sceneTypes, oldName, block, rawSceneType) {
     sceneType.instructions_override = instructionsOverride;
   } else {
     delete sceneType.instructions_override;
+  }
+  if (examplesOverride.trim()) {
+    sceneType.examples_override = examplesOverride;
+  } else {
+    delete sceneType.examples_override;
   }
   next[name] = sceneType;
   return next;

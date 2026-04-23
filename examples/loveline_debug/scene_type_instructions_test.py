@@ -61,6 +61,30 @@ class SceneTypeInstructionsTest(absltest.TestCase):
         instructions_component.Instructions().get_state()["state"],
     )
 
+  def test_uses_examples_override_for_active_scene_type(self):
+    component = scene_type_instructions.SceneTypeExamplesOverride({
+        "pod_date": "Exercise: Keep this scene punchy. --- Response: Warm banter.",
+    })
+    component.set_entity(_FakeEntity("pod_date"))
+
+    self.assertEqual(
+        component.get_pre_act_value(),
+        "Exercise: Keep this scene punchy. --- Response: Warm banter.",
+    )
+
+  def test_examples_fall_back_to_stock_examples_when_scene_type_has_no_override(
+      self,
+  ):
+    component = scene_type_instructions.SceneTypeExamplesOverride({
+        "pod_date": "Exercise: Keep this scene punchy. --- Response: Warm banter.",
+    })
+    component.set_entity(_FakeEntity("confessional"))
+
+    self.assertEqual(
+        component.get_pre_act_value(),
+        component._default_examples,  # pylint: disable=protected-access
+    )
+
 
 if __name__ == "__main__":
   absltest.main()

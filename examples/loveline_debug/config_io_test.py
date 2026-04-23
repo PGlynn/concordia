@@ -198,6 +198,26 @@ class ConfigIoTest(absltest.TestCase):
         "Run the pod date with a warmer, lighter tone.",
     )
 
+  def test_scene_type_examples_override_persists_through_draft_json(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["examples_override"] = (
+        "Exercise: Keep the banter light. --- Response: A playful beat lands."
+    )
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    path = config_io.save_draft(draft, "scene_type_examples", paths)
+    stored = config_io.load_json(path)
+    loaded = config_io.load_draft("scene_type_examples", paths)
+
+    self.assertEqual(
+        stored["scene_types"]["pod_date"]["examples_override"],
+        "Exercise: Keep the banter light. --- Response: A playful beat lands.",
+    )
+    self.assertEqual(
+        loaded["scene_types"]["pod_date"]["examples_override"],
+        "Exercise: Keep the banter light. --- Response: A playful beat lands.",
+    )
+
   def test_build_config_adds_local_scene_type_instructions_component(self):
     draft = config_io.make_default_draft()
     draft["scene_types"]["pod_date"]["instructions_override"] = (
@@ -217,11 +237,47 @@ class ConfigIoTest(absltest.TestCase):
         scene_type_instructions.SceneTypeInstructionsOverride,
     )
 
+  def test_build_config_adds_local_scene_type_examples_component(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["examples_override"] = (
+        "Exercise: Keep the banter light. --- Response: A playful beat lands."
+    )
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    self.assertEqual(
+        gm_instances[0].params["extra_components_index"]["examples"], 2
+    )
+    self.assertIsInstance(
+        gm_instances[0].params["extra_components"]["examples"],
+        scene_type_instructions.SceneTypeExamplesOverride,
+    )
+
   def test_build_config_skips_local_scene_type_instructions_component_when_blank(
       self,
   ):
     draft = config_io.make_default_draft()
     draft["scene_types"]["pod_date"]["instructions_override"] = "   "
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    self.assertNotIn("extra_components", gm_instances[0].params)
+
+  def test_build_config_skips_local_scene_type_examples_component_when_blank(
+      self,
+  ):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["examples_override"] = "   "
 
     config = config_io.build_config(draft)
 
