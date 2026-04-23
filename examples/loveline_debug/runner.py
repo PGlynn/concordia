@@ -378,6 +378,22 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
   """Returns compact run context for UI history and manifests."""
   contestants = draft.get("contestants") or []
   run = draft.get("run") or {}
+  scene_types = draft.get("scene_types") or {}
+  scenes = []
+  total_rounds = 0
+  for index, scene in enumerate(draft.get("scenes") or []):
+    rounds = scene.get("num_rounds") or scene_types.get(scene.get("type"), {}).get(
+        "rounds"
+    )
+    if rounds:
+      total_rounds += int(rounds)
+    scenes.append({
+        "index": index,
+        "id": scene.get("id") or f"Scene {index + 1}",
+        "type": scene.get("type"),
+        "rounds": rounds,
+        "participants": scene.get("participants") or [],
+    })
   return {
       "selected_pair": [
           item.get("name") for item in contestants if item.get("name")
@@ -388,6 +404,8 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
       "selected_candidate_ids": draft.get("selected_candidate_ids") or [],
       "source_root": draft.get("source_root"),
       "scene_count": len(draft.get("scenes") or []),
+      "total_configured_rounds": total_rounds,
+      "show_flow": scenes,
       "max_steps": run.get("max_steps"),
       "disable_language_model": bool(run.get("disable_language_model")),
       "api_type": run.get("api_type"),

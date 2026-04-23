@@ -7,16 +7,18 @@ const {
   cleanDialogueEntries,
   cleanDialogueStepLabel,
   cleanDialogueText,
+  activeDialogueState,
   renderCleanDialogue,
 } = require("./app.js");
 
 function installDom() {
   const elements = new Map();
-  for (const id of ["cleanDialogueContext", "cleanDialogueView", "cleanDialogueMessage"]) {
+  for (const id of ["cleanDialogueContext", "cleanDialogueView", "cleanDialogueMessage", "cleanDialogueRunSelect"]) {
     elements.set(id, {
       innerHTML: "",
       textContent: "",
       className: "",
+      value: "",
     });
   }
   global.document = {
@@ -94,7 +96,7 @@ function testRenderCleanDialogueShowsContextAndConversation() {
 
   assert.match(elements.get("cleanDialogueContext").innerHTML, /run_1/);
   assert.match(elements.get("cleanDialogueContext").innerHTML, /Alex vs Blake/);
-  assert.match(elements.get("cleanDialogueContext").innerHTML, /Scene Count/);
+  assert.match(elements.get("cleanDialogueContext").innerHTML, /Configured Scenes/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /dialogue-turn/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /Spoken turn 1/);
   assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /engine step/);
@@ -121,9 +123,39 @@ function testCleanDialogueHidesEngineStepWhenFirstSpeechStartsAtStepTwo() {
   assert.equal(cleanDialogueStepLabel({step: 2}, 0), "Spoken turn 1");
 }
 
+function testRenderCleanDialogueCanFollowActiveRun() {
+  const elements = installDom();
+  const state = activeDialogueState({
+    active: {
+      run_id: "active_run",
+      status: "running",
+      summary: {
+        selected_pair: ["Alex", "Blake"],
+        scene_count: 2,
+        total_configured_rounds: 3,
+      },
+      transcript: [
+        {step: 1, acting_entity: "Alex", action: "I am here live."},
+      ],
+    },
+  });
+
+  assert.equal(state.live, true);
+  assert.equal(state.run_id, "active_run");
+  assert.equal(cleanDialogueStepLabel(state.entries[0], 0), "Live step 1");
+  assert.equal(cleanDialogueText(state.entries[0]), "I am here live.");
+
+  renderCleanDialogue(state);
+  assert.match(elements.get("cleanDialogueContext").innerHTML, /live status transcript/);
+  assert.match(elements.get("cleanDialogueContext").innerHTML, /Configured Rounds/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /Live step 1/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /I am here live/);
+}
+
 testIndexExposesDialogueAsPrimaryTab();
 testCleanDialogueFiltersCandidateDialogueOnly();
 testCleanDialogueContextPrefersStateSummary();
 testRenderCleanDialogueShowsContextAndConversation();
 testCleanDialogueHidesEngineStepWhenFirstSpeechStartsAtStepTwo();
+testRenderCleanDialogueCanFollowActiveRun();
 console.log("app_clean_dialogue_test passed");

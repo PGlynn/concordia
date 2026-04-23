@@ -1,7 +1,7 @@
 let source = null;
 let draft = null;
 let activeTab = "dialogue";
-let activeLogsSubTab = "browser";
+let activeDialogueSubTab = "conversation";
 let latestStatus = null;
 let inspectorState = null;
 let compareState = null;
@@ -86,6 +86,12 @@ function runContextLabel(context) {
     context?.start_paused === false ? "starts playing" : "starts paused",
     context?.checkpoint_every_step === false ? "no checkpoints" : "checkpoints",
   ].filter(Boolean).join(" | ");
+}
+
+function runOptionLabel(run) {
+  const summary = run.summary || run.run_context || {};
+  const pair = (summary.selected_pair || summary.candidates || []).filter(Boolean).join(" vs ");
+  return [run.run_id, run.status, pair].filter(Boolean).join(" - ");
 }
 
 function displayValue(value) {
@@ -636,7 +642,6 @@ function hydrateInputs() {
   renderSceneTypeEditor();
   renderHelpTab();
   renderShowFlowSummary();
-  $("snapshotJson").value = pretty(draft);
 }
 
 function collectConfigForm() {
@@ -780,16 +785,11 @@ function collectScenesForms() {
 }
 
 function collectDraft() {
-  if (activeTab === "logs" && activeLogsSubTab === "snapshot") {
-    draft = JSON.parse($("snapshotJson").value);
-  } else {
-    collectConfigForm();
-    collectCandidateForms();
-    collectSceneTypeForms();
-    collectScenesForms();
-  }
+  collectConfigForm();
+  collectCandidateForms();
+  collectSceneTypeForms();
+  collectScenesForms();
   draft.name = $("draftName").value;
-  $("snapshotJson").value = pretty(draft);
   return draft;
 }
 
@@ -818,12 +818,10 @@ async function refreshStatus() {
   const payload = await api("/api/status");
   latestStatus = payload;
   renderRunSummary(payload);
+  renderProgressSummary(payload);
   updateControlButtons(payload);
-  $("status").textContent = pretty({
-    active: payload.active || {status: "idle"},
-    control: payload.control || null,
-  });
-  renderRecentRuns(payload.recent_runs || []);
+  renderDialogueRunWorkflow(payload.recent_runs || [], payload.active);
+  if (activeDialogueSubTab === "conversation") renderCleanDialogue();
   if (!inspectorState && (payload.recent_runs || []).length) {
     const run = payload.recent_runs.find((item) => item.artifacts?.structured_log);
     if (run) loadInspector(run.run_id).catch((error) => setInspectorMessage(error.message, true));
@@ -856,6 +854,35 @@ function renderRunSummary(payload) {
   ).join("");
 }
 
+function renderProgressSummary(payload) {
+  const active = payload?.active;
+  const element = $("progressSummary");
+  if (!element) return;
+  if (!active) {
+    element.innerHTML = '<div class="muted">No active run.</div>';
+    return;
+  }
+  const context = active.summary || {};
+  const flow = context.show_flow || [];
+  const maxSteps = Number(context.max_steps || 0);
+  const currentStep = Number(payload.control?.current_step ?? active.current_step ?? 0);
+  const percent = maxSteps ? Math.min(100, Math.round((currentStep / maxSteps) * 100)) : 0;
+  const running = ["starting", "running"].includes(active.status);
+  const scenes = context.scene_count ?? flow.length;
+  const rounds = context.total_configured_rounds || "";
+  const firstPending = flow[Math.min(Math.max(currentStep - 1, 0), Math.max(flow.length - 1, 0))];
+  const sceneText = scenes
+    ? `${scenes} configured scene${Number(scenes) === 1 ? "" : "s"}${rounds ? `, ${rounds} configured round${Number(rounds) === 1 ? "" : "s"}` : ""}`
+    : "No configured scene outline";
+  const marker = firstPending
+    ? `Configured outline includes ${firstPending.id || "next scene"}${firstPending.rounds ? ` (${firstPending.rounds} round${Number(firstPending.rounds) === 1 ? "" : "s"})` : ""}.`
+    : "No scene marker is available.";
+  element.innerHTML = `
+    ${running ? '<div class="live-indicator"><span class="spinner" aria-hidden="true"></span><span>Processing active run</span></div>' : ""}
+    <div class="progress-bar" aria-label="Run step progress" style="--progress-width:${escapeHtml(percent)}%"><span></span></div>
+    <div class="muted">${escapeHtml(`Engine step ${currentStep}${maxSteps ? ` of ${maxSteps}` : ""}. ${sceneText}. ${marker} Exact active scene/round is not emitted in live status.`)}</div>`;
+}
+
 function updateControlButtons(payload = latestStatus) {
   const hasControl = Boolean(payload?.control);
   const isPaused = Boolean(payload?.control?.is_paused);
@@ -885,15 +912,21 @@ function artifactRel(path) {
   return path ? path.split("/runs/").pop() : null;
 }
 
-function renderRecentRuns(runs) {
+function renderDialogueRunWorkflow(runs, active = latestStatus?.active) {
+  renderRunOptions(runs, active);
+  renderDialogueRunActions(runs);
+}
+
+const renderRecentRuns = renderDialogueRunWorkflow;
+
+function renderDialogueRunActions(runs) {
+  const element = $("dialogueRunActions");
+  if (!element) return;
   if (!runs.length) {
-    $("recentRuns").innerHTML = '<li class="muted">No runs yet.</li>';
-    renderCompareOptions(runs);
-    renderLogRunOptions(runs);
-    renderCleanDialogueRunOptions(runs);
+    element.innerHTML = '<div class="muted">No saved runs yet.</div>';
     return;
   }
-  $("recentRuns").innerHTML = runs.map((run) => {
+  element.innerHTML = `<div class="band"><h2>Saved Runs</h2>${runs.map((run) => {
     const id = run.run_id;
     const links = run.artifacts || {};
     const html = artifactRel(links.html_log);
@@ -905,29 +938,31 @@ function renderRecentRuns(runs) {
       run.finished_at || run.started_at || summary.snapshot_at || "",
       runContextLabel(summary),
     ].filter(Boolean).join(" | ");
-    return `<li class="run-item">
+    return `<div class="run-item">
       <div><strong>${escapeHtml(id)}</strong><div class="muted">${escapeHtml(meta)}</div></div>
       <div class="run-actions">
-        <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Inspect</button>
-        <button class="secondary small" data-dialogue-run="${escapeHtml(id)}" type="button">Dialogue</button>
-        <button class="secondary small" data-log-run="${escapeHtml(id)}" type="button">Log</button>
-        <button class="secondary small" data-compare-left="${escapeHtml(id)}" type="button" aria-label="Use ${escapeHtml(id)} as compare side A">Use as A</button>
-        <button class="secondary small" data-compare-right="${escapeHtml(id)}" type="button" aria-label="Use ${escapeHtml(id)} as compare side B">Use as B</button>
+        <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Open in Inspect</button>
+        <button class="secondary small" data-dialogue-run="${escapeHtml(id)}" type="button">Open Conversation</button>
+        <button class="secondary small" data-log-run="${escapeHtml(id)}" type="button">Open Log</button>
         <button class="secondary small" data-delete-run="${escapeHtml(id)}" type="button">Delete</button>
         ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
         ${json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">json</a>` : ""}
         ${cfg ? `<a href="/artifacts/${escapeHtml(cfg)}" target="_blank">config</a>` : ""}
       </div>
-    </li>`;
-  }).join("");
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderRunOptions(runs, active = null) {
   renderCompareOptions(runs);
   renderLogRunOptions(runs);
-  renderCleanDialogueRunOptions(runs);
+  renderCleanDialogueRunOptions(runs, active);
+  renderInspectorRunOptions(runs);
 }
 
 function renderCompareOptions(runs) {
   const options = runs.map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id)}</option>`
+    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
   ).join("");
   const previousLeft = $("compareLeft").value;
   const previousRight = $("compareRight").value;
@@ -947,7 +982,7 @@ function renderLogRunOptions(runs) {
   const previous = select.value;
   const logRuns = runs.filter((run) => run.artifacts?.structured_log);
   const options = (logRuns.length ? logRuns : runs).map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id)}</option>`
+    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
   ).join("");
   select.innerHTML = options;
   if ((logRuns.length ? logRuns : runs).some((run) => run.run_id === previous)) {
@@ -955,18 +990,39 @@ function renderLogRunOptions(runs) {
   }
 }
 
-function renderCleanDialogueRunOptions(runs) {
+function renderCleanDialogueRunOptions(runs, active = null) {
   const select = $("cleanDialogueRunSelect");
   if (!select) return;
   const previous = select.value;
   const logRuns = runs.filter((run) => run.artifacts?.structured_log);
-  const options = (logRuns.length ? logRuns : runs).map((run) =>
-    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(run.run_id)}</option>`
+  const savedOptions = (logRuns.length ? logRuns : runs).map((run) =>
+    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
   ).join("");
-  select.innerHTML = options;
+  const activeOption = active && ["starting", "running"].includes(active.status)
+    ? `<option value="__active__">Active run - ${escapeHtml(active.run_id)}</option>`
+    : "";
+  select.innerHTML = activeOption + savedOptions;
+  if (previous === "__active__" && activeOption) {
+    select.value = "__active__";
+    return;
+  }
+  if (activeOption && !previous) {
+    select.value = "__active__";
+    return;
+  }
   if ((logRuns.length ? logRuns : runs).some((run) => run.run_id === previous)) {
     select.value = previous;
   }
+}
+
+function renderInspectorRunOptions(runs) {
+  const select = $("inspectorRunSelect");
+  if (!select) return;
+  const previous = select.value;
+  select.innerHTML = runs.map((run) =>
+    `<option value="${escapeHtml(run.run_id)}">${escapeHtml(runOptionLabel(run))}</option>`
+  ).join("");
+  if (runs.some((run) => run.run_id === previous)) select.value = previous;
 }
 
 async function loadInspector(runId, selection = {}) {
@@ -985,7 +1041,7 @@ function renderInspector() {
   if (!inspectorState) return;
   const selected = inspectorState.selected;
   $("inspectorRunId").textContent = inspectorState.run_id || "";
-  $("inspectorRunInput").value = inspectorState.run_id || $("inspectorRunInput").value;
+  if ($("inspectorRunSelect") && inspectorState.run_id) $("inspectorRunSelect").value = inspectorState.run_id;
   $("turnSelect").innerHTML = (inspectorState.entries || []).map((entry) => {
     const isSelected = selected && entry.index === selected.index ? " selected" : "";
     const action = displayValue(entry.action || entry.summary).replace(/\s+/g, " ").trim();
@@ -1032,6 +1088,11 @@ async function deleteRun(runId) {
 
 async function loadCleanDialogue(runId) {
   if (!runId) throw new Error("Choose a run.");
+  if (runId === "__active__") {
+    cleanDialogueState = null;
+    renderCleanDialogue();
+    return;
+  }
   cleanDialogueState = await api(`/api/logs/${encodeURIComponent(runId)}`);
   renderCleanDialogue();
 }
@@ -1147,7 +1208,8 @@ function renderLogArtifactLink(state = logsState) {
 }
 
 function cleanDialogueText(entry) {
-  return entry?.concordia_event_text || entry?.raw_utterance_text || entry?.action || entry?.preview || "";
+  const value = entry?.concordia_event_text || entry?.raw_utterance_text || entry?.action || entry?.preview || "";
+  return typeof value === "string" ? value : displayValue(value);
 }
 
 function cleanDialogueEntries(state = cleanDialogueState) {
@@ -1159,15 +1221,42 @@ function cleanDialogueEntries(state = cleanDialogueState) {
 }
 
 function cleanDialogueContext(state = cleanDialogueState, status = latestStatus) {
+  if (!state && status?.active && ["starting", "running"].includes(status.active.status)) {
+    return status.active.summary || {};
+  }
   const run = (status?.recent_runs || []).find((item) => item.run_id === state?.run_id);
   return state?.summary || state?.run_context || run?.summary || run?.run_context || {};
 }
 
 function cleanDialogueStepLabel(entry, spokenIndex) {
+  if (entry?.live) return `Live step ${entry.step ?? spokenIndex + 1}`;
   return `Spoken turn ${spokenIndex + 1}`;
 }
 
+function activeDialogueState(status = latestStatus) {
+  const active = status?.active;
+  if (!active || !["starting", "running"].includes(active.status)) return null;
+  return {
+    available: true,
+    live: true,
+    run_id: active.run_id,
+    summary: active.summary || {},
+    entries: (active.transcript || []).map((entry, index) => ({
+      index,
+      step: entry.step,
+      entity_name: entry.acting_entity,
+      action: entry.action,
+      raw_entry: entry,
+      entry_type: "entity",
+      live: true,
+    })),
+  };
+}
+
 function renderCleanDialogue(state = cleanDialogueState) {
+  const select = $("cleanDialogueRunSelect");
+  const shouldUseActive = select?.value === "__active__" || (!state && latestStatus?.active && ["starting", "running"].includes(latestStatus.active.status));
+  if (shouldUseActive) state = activeDialogueState();
   if (!state) {
     $("cleanDialogueContext").innerHTML = "";
     $("cleanDialogueView").innerHTML = '<div class="muted">Choose a run to load its candidate dialogue.</div>';
@@ -1185,16 +1274,20 @@ function renderCleanDialogue(state = cleanDialogueState) {
   const context = cleanDialogueContext(state);
   const contextRows = [
     ["Run", state.run_id || ""],
+    ["Source", state.live ? "live status transcript" : "saved structured log"],
     ["Pair", (context.selected_pair || context.candidates || []).filter(Boolean).join(" vs ")],
     ["Settings", runContextLabel(context)],
-    ["Scene Count", context.scene_count ?? ""],
+    ["Configured Scenes", context.scene_count ?? ""],
+    ["Configured Rounds", context.total_configured_rounds ?? ""],
   ];
   $("cleanDialogueContext").innerHTML = `<dl class="status-grid">${contextRows.map(([key, value]) =>
     `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
   ).join("")}</dl>`;
   const entries = cleanDialogueEntries(state);
   if (!entries.length) {
-    $("cleanDialogueView").innerHTML = '<div class="muted">No candidate dialogue entries found in this run.</div>';
+    $("cleanDialogueView").innerHTML = state.live
+      ? '<div class="muted">The run is active. Candidate dialogue will appear here as live transcript entries arrive.</div>'
+      : '<div class="muted">No candidate dialogue entries found in this run.</div>';
     return;
   }
   $("cleanDialogueView").innerHTML = `<div class="dialogue-list">${entries.map((entry, index) => {
@@ -1407,9 +1500,8 @@ if (typeof document !== "undefined") {
     if (target.id === "candidateSelect") return false;
     if (target.id === "sceneSelect") return false;
     if (target.id === "sceneTypeSelect") return false;
-    if (target.id === "snapshotJson") return true;
     const panel = target.closest("[data-tab-panel]");
-    return Boolean(panel && !["logs", "dialogue"].includes(panel.dataset.tabPanel));
+    return Boolean(panel && panel.dataset.tabPanel !== "dialogue");
   };
 
   document.addEventListener("input", (event) => {
@@ -1487,17 +1579,16 @@ if (typeof document !== "undefined") {
     });
   });
 
-  document.querySelectorAll("[data-logs-tab]").forEach((button) => {
+  document.querySelectorAll("[data-dialogue-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       try {
         collectDraft();
-        activeLogsSubTab = button.dataset.logsTab;
-        document.querySelectorAll("[data-logs-tab]").forEach((b) => b.classList.remove("active"));
+        activeDialogueSubTab = button.dataset.dialogueTab;
+        document.querySelectorAll("[data-dialogue-tab]").forEach((b) => b.classList.remove("active"));
         button.classList.add("active");
-        document.querySelectorAll("[data-logs-panel]").forEach((panel) => {
-          panel.style.display = panel.dataset.logsPanel === activeLogsSubTab ? "" : "none";
+        document.querySelectorAll("[data-dialogue-panel]").forEach((panel) => {
+          panel.style.display = panel.dataset.dialoguePanel === activeDialogueSubTab ? "" : "none";
         });
-        $("snapshotJson").value = pretty(draft);
         setMessage("");
       } catch (error) {
         setMessage(error.message, true);
@@ -1567,6 +1658,10 @@ if (typeof document !== "undefined") {
       const launchMode = record.start_paused ? "paused" : "playing";
       setMessage(`Started ${record.run_id} ${launchMode}.`);
       await refreshStatus();
+      const conversationTab = document.querySelector('[data-dialogue-tab="conversation"]');
+      if (conversationTab) conversationTab.click();
+      if ($("cleanDialogueRunSelect")) $("cleanDialogueRunSelect").value = "__active__";
+      renderCleanDialogue();
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -1716,13 +1811,16 @@ if (typeof document !== "undefined") {
   document.addEventListener("click", (event) => {
     const inspectRun = event.target.closest("[data-inspect-run]");
     if (inspectRun) {
+      const tab = document.querySelector('[data-dialogue-tab="inspect"]');
+      if (tab) tab.click();
+      if ($("inspectorRunSelect")) $("inspectorRunSelect").value = inspectRun.dataset.inspectRun;
       loadInspector(inspectRun.dataset.inspectRun)
         .catch((error) => setInspectorMessage(error.message, true));
       return;
     }
     const logRun = event.target.closest("[data-log-run]");
     if (logRun) {
-      const tab = document.querySelector('[data-tab="logs"]');
+      const tab = document.querySelector('[data-dialogue-tab="browser"]');
       if (tab) tab.click();
       $("logRunSelect").value = logRun.dataset.logRun;
       loadLog(logRun.dataset.logRun)
@@ -1733,6 +1831,8 @@ if (typeof document !== "undefined") {
     if (dialogueRun) {
       const tab = document.querySelector('[data-tab="dialogue"]');
       if (tab) tab.click();
+      const subtab = document.querySelector('[data-dialogue-tab="conversation"]');
+      if (subtab) subtab.click();
       $("cleanDialogueRunSelect").value = dialogueRun.dataset.dialogueRun;
       loadCleanDialogue(dialogueRun.dataset.dialogueRun)
         .catch((error) => {
@@ -1745,16 +1845,6 @@ if (typeof document !== "undefined") {
     if (logEntry && logsState) {
       logsState.selected_index = Number(logEntry.dataset.logEntry);
       renderLogBrowser();
-      return;
-    }
-    const compareLeft = event.target.closest("[data-compare-left]");
-    if (compareLeft) {
-      $("compareLeft").value = compareLeft.dataset.compareLeft;
-      return;
-    }
-    const compareRight = event.target.closest("[data-compare-right]");
-    if (compareRight) {
-      $("compareRight").value = compareRight.dataset.compareRight;
       return;
     }
     const deleteRunButton = event.target.closest("[data-delete-run]");
@@ -1821,8 +1911,8 @@ if (typeof document !== "undefined") {
 
   $("loadInspector").addEventListener("click", async () => {
     try {
-      const runId = $("inspectorRunInput").value.trim();
-      if (!runId) throw new Error("Enter a run id.");
+      const runId = $("inspectorRunSelect").value;
+      if (!runId) throw new Error("Choose a run.");
       await loadInspector(runId);
     } catch (error) {
       setInspectorMessage(error.message, true);
@@ -1878,6 +1968,9 @@ if (typeof module !== "undefined") {
     renderCompareSide,
     renderRecentRuns,
     renderCleanDialogue,
+    activeDialogueState,
+    renderDialogueRunWorkflow,
+    renderProgressSummary,
     showFlowSummaryHtml,
     stockFlowHelpHtml,
     cleanDialogueEntries,

@@ -3,12 +3,13 @@ const assert = require("assert/strict");
 const {
   renderRecentRuns,
   renderCompareSide,
+  renderProgressSummary,
   showFlowSummaryHtml,
 } = require("./app.js");
 
 function installRecentRunsDom() {
   const elements = new Map();
-  for (const id of ["recentRuns", "compareLeft", "compareRight", "logRunSelect", "cleanDialogueRunSelect"]) {
+  for (const id of ["dialogueRunActions", "compareLeft", "compareRight", "logRunSelect", "cleanDialogueRunSelect", "inspectorRunSelect"]) {
     elements.set(id, {
       innerHTML: "",
       value: "",
@@ -22,18 +23,33 @@ function installRecentRunsDom() {
   return elements;
 }
 
-function testRecentRunCompareAffordancesNameSideInputs() {
+function installProgressDom() {
+  const elements = new Map([[
+    "progressSummary",
+    {innerHTML: ""},
+  ]]);
+  global.document = {
+    getElementById(id) {
+      return elements.get(id) || null;
+    },
+  };
+  return elements;
+}
+
+function testRecentRunActionsMoveIntoDialogueWorkflow() {
   const elements = installRecentRunsDom();
   renderRecentRuns([
     {run_id: "run_a", status: "done", artifacts: {}, summary: {}},
     {run_id: "run_b", status: "done", artifacts: {}, summary: {}},
   ]);
 
-  const html = elements.get("recentRuns").innerHTML;
-  assert.match(html, /Use as A/);
-  assert.match(html, /Use as B/);
-  assert.match(html, /compare side A/);
-  assert.match(html, /compare side B/);
+  const html = elements.get("dialogueRunActions").innerHTML;
+  assert.match(html, /Saved Runs/);
+  assert.match(html, /Open in Inspect/);
+  assert.match(html, /Open Conversation/);
+  assert.match(html, /Open Log/);
+  assert.doesNotMatch(html, /Use as A/);
+  assert.doesNotMatch(html, /Use as B/);
   assert.doesNotMatch(html, />Left<\/button>/);
   assert.doesNotMatch(html, />Right<\/button>/);
 }
@@ -70,7 +86,34 @@ function testShowFlowSummaryListsUsefulSceneMetadata() {
   assert.match(html, /Blake/);
 }
 
-testRecentRunCompareAffordancesNameSideInputs();
+function testProgressSummaryUsesConfiguredShowFlowHonestly() {
+  const elements = installProgressDom();
+  renderProgressSummary({
+    active: {
+      status: "running",
+      current_step: 2,
+      summary: {
+        max_steps: 8,
+        scene_count: 2,
+        total_configured_rounds: 3,
+        show_flow: [
+          {id: "confessional_marcus_after_round_one", rounds: 1},
+          {id: "pod_date", rounds: 2},
+        ],
+      },
+    },
+    control: {current_step: 2},
+  });
+
+  const html = elements.get("progressSummary").innerHTML;
+  assert.match(html, /Processing active run/);
+  assert.match(html, /Engine step 2 of 8/);
+  assert.match(html, /2 configured scenes, 3 configured rounds/);
+  assert.match(html, /Exact active scene\/round is not emitted/);
+}
+
+testRecentRunActionsMoveIntoDialogueWorkflow();
 testCompareSideUsesSceneCountLabel();
 testShowFlowSummaryListsUsefulSceneMetadata();
+testProgressSummaryUsesConfiguredShowFlowHonestly();
 console.log("app_chrome_cleanup_test passed");

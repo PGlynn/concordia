@@ -136,7 +136,8 @@ class RunnerTest(absltest.TestCase):
         "source_root": "/tmp/starter",
         "selected_candidate_ids": ["alex_id", "blake_id"],
         "contestants": [{"name": "Alex"}, {"name": "Blake"}],
-        "scenes": [{"id": "pod"}],
+        "scene_types": {"pod_date": {"rounds": 2}},
+        "scenes": [{"id": "pod", "type": "pod_date"}],
         "run": {
             "max_steps": 12,
             "disable_language_model": True,
@@ -152,6 +153,9 @@ class RunnerTest(absltest.TestCase):
     self.assertEqual(summary["selected_pair"], ["Alex", "Blake"])
     self.assertEqual(summary["selected_candidate_ids"], ["alex_id", "blake_id"])
     self.assertEqual(summary["scene_count"], 1)
+    self.assertEqual(summary["total_configured_rounds"], 2)
+    self.assertEqual(summary["show_flow"][0]["id"], "pod")
+    self.assertEqual(summary["show_flow"][0]["rounds"], 2)
     self.assertEqual(summary["max_steps"], 12)
     self.assertTrue(summary["disable_language_model"])
     self.assertFalse(summary["start_paused"])

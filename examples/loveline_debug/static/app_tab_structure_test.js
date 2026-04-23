@@ -17,7 +17,6 @@ function testSimulationConfigIsLastSecondaryTab() {
     "candidates",
     "showFlow",
     "sceneEditor",
-    "logs",
     "help",
     "config",
   ]);
@@ -35,11 +34,17 @@ function testScenesAreSplitIntoUserFacingSurfaces() {
   assert.doesNotMatch(html, /data-tab="scenes"[^>]*>Scenes/);
 }
 
-function testSnapshotLivesUnderLogs() {
+function testDialogueOwnsRunWorkflowSubmodes() {
   assert.doesNotMatch(html, /data-tab="snapshot"[^>]*>Snapshot/);
-  assert.match(html, /data-logs-tab="browser"[^>]*>Log Browser/);
-  assert.match(html, /data-logs-tab="snapshot"[^>]*>Snapshot/);
-  assert.match(html, /data-logs-panel="snapshot"/);
+  assert.doesNotMatch(html, /data-tab="logs"[^>]*>Logs/);
+  assert.match(html, /data-dialogue-tab="conversation"[^>]*>Conversation/);
+  assert.match(html, /data-dialogue-tab="compare"[^>]*>Compare/);
+  assert.match(html, /data-dialogue-tab="inspect"[^>]*>Inspect/);
+  assert.match(html, /data-dialogue-tab="browser"[^>]*>Log Browser/);
+  assert.match(html, /id="compareLeft"/);
+  assert.match(html, /id="compareRight"/);
+  assert.doesNotMatch(html, /Use as A/);
+  assert.doesNotMatch(html, /Use as B/);
 }
 
 function testTabsStayVisibleWhilePanelsScroll() {
@@ -56,6 +61,8 @@ function testSavedDraftPickerLivesInHeader() {
   assert.doesNotMatch(header, /id="loadDraftBtn"/);
   assert.doesNotMatch(firstSection, /<select id="loadDraft">/);
   assert.match(firstSection, /id="showFlowSummary"/);
+  assert.match(firstSection, /Start Run From Current Draft/);
+  assert.match(firstSection, /id="progressSummary"/);
 }
 
 function testConfigOwnsPairAndRestoreControls() {
@@ -80,7 +87,7 @@ function testSemanticsAreVisibleInUiCopy() {
 
 testSimulationConfigIsLastSecondaryTab();
 testScenesAreSplitIntoUserFacingSurfaces();
-testSnapshotLivesUnderLogs();
+testDialogueOwnsRunWorkflowSubmodes();
 testTabsStayVisibleWhilePanelsScroll();
 testSavedDraftPickerLivesInHeader();
 testConfigOwnsPairAndRestoreControls();

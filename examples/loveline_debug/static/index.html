@@ -28,7 +28,7 @@
     header {
       min-height: 58px;
       display: grid;
-      grid-template-columns: minmax(180px, 1fr) minmax(360px, 560px) minmax(360px, 1fr);
+      grid-template-columns: minmax(180px, 1fr) minmax(360px, 560px) minmax(320px, 1fr);
       gap: 12px;
       align-items: center;
       padding: 10px 18px;
@@ -41,7 +41,7 @@
     main {
       min-height: 0;
       display: grid;
-      grid-template-columns: 240px minmax(540px, 1fr) 360px;
+      grid-template-columns: minmax(260px, 310px) minmax(540px, 1fr);
       overflow: hidden;
     }
     section {
@@ -56,6 +56,7 @@
       background: var(--panel);
       border-radius: 6px;
       margin-bottom: 12px;
+      min-width: 0;
     }
     label, .field-label {
       display: block;
@@ -82,7 +83,7 @@
       font-size: 13px;
     }
     textarea.tall { min-height: 220px; }
-    .json-box, #snapshotJson, #contestantsJson, #scenesJson, #configRawJson {
+    .json-box, #contestantsJson, #scenesJson, #configRawJson {
       min-height: 180px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
@@ -211,6 +212,8 @@
       display: grid;
       gap: 6px;
       margin-bottom: 10px;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
     .run-actions {
       display: flex;
@@ -348,6 +351,41 @@
     .show-flow-summary li {
       padding-bottom: 8px;
       border-bottom: 1px solid var(--line);
+      overflow-wrap: anywhere;
+    }
+    .show-flow-summary strong { overflow-wrap: anywhere; }
+    .progress-bar {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e2e8f0;
+      margin: 8px 0;
+    }
+    .progress-bar span {
+      display: block;
+      height: 100%;
+      width: var(--progress-width, 0%);
+      background: var(--accent);
+    }
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-weight: 650;
+      color: var(--accent);
+    }
+    .spinner {
+      width: 13px;
+      height: 13px;
+      border: 2px solid #99f6e4;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dialogue-tools {
+      display: grid;
+      gap: 12px;
     }
     .show-flow-summary li:last-child { border-bottom: 0; padding-bottom: 0; }
     .flow-panel {
@@ -427,11 +465,26 @@
       <input id="draftName" value="two_candidate_debug" aria-label="Draft name">
       <span id="dirtyState" class="muted" aria-live="polite">No unsaved changes</span>
       <button id="saveDraft">Save Draft</button>
-      <button id="runDraft" class="warn">Launch Run</button>
     </div>
   </header>
   <main>
     <section>
+      <div class="band">
+        <h2>Run Operations</h2>
+        <button id="runDraft" class="warn" type="button">Start Run From Current Draft</button>
+        <div class="row" style="margin-top:8px">
+          <button id="controlPlay" data-command="play" class="secondary">Play</button>
+          <button id="controlPause" data-command="pause" class="secondary">Pause</button>
+          <button id="controlStep" data-command="step" class="secondary">Step</button>
+          <button id="controlStop" data-command="stop" class="secondary">Stop</button>
+        </div>
+      </div>
+      <div class="band">
+        <h2>Live Status</h2>
+        <div id="message" class="muted"></div>
+        <dl id="runSummary" class="status-grid"></dl>
+        <div id="progressSummary"></div>
+      </div>
       <div class="band">
         <h2>Show-Flow Summary</h2>
         <div id="showFlowSummary" class="show-flow-summary"></div>
@@ -443,7 +496,6 @@
         <button data-tab="candidates">Candidates</button>
         <button data-tab="showFlow">Show Flow</button>
         <button data-tab="sceneEditor">Scene Editor</button>
-        <button data-tab="logs">Logs</button>
         <button data-tab="help">Help</button>
         <button data-tab="config">Simulation Config</button>
       </div>
@@ -502,13 +554,60 @@
       </div>
 
       <div data-tab-panel="dialogue" id="tabDialogue">
-        <div class="log-toolbar">
-          <label>Run<select id="cleanDialogueRunSelect"></select></label>
-          <div id="cleanDialogueMessage" class="muted"></div>
-          <button id="loadCleanDialogue" class="secondary" type="button">Load Dialogue</button>
+        <div class="subtabs">
+          <button data-dialogue-tab="conversation" class="active" type="button">Conversation</button>
+          <button data-dialogue-tab="compare" type="button">Compare</button>
+          <button data-dialogue-tab="inspect" type="button">Inspect</button>
+          <button data-dialogue-tab="browser" type="button">Log Browser</button>
         </div>
-        <div id="cleanDialogueContext" class="dialogue-context"></div>
-        <div id="cleanDialogueView"></div>
+        <div data-dialogue-panel="conversation" class="dialogue-tools">
+          <div class="log-toolbar">
+            <label>Saved Run<select id="cleanDialogueRunSelect"></select></label>
+            <div id="cleanDialogueMessage" class="muted"></div>
+            <button id="loadCleanDialogue" class="secondary" type="button">Load Saved Conversation</button>
+          </div>
+          <div id="dialogueRunActions"></div>
+          <div id="cleanDialogueContext" class="dialogue-context"></div>
+          <div id="cleanDialogueView"></div>
+        </div>
+        <div data-dialogue-panel="compare" style="display:none">
+          <div class="band">
+            <h2>First-Turn Compare</h2>
+            <div id="compareMessage" class="muted"></div>
+            <div class="row">
+              <label>Baseline Run<select id="compareLeft" aria-label="Baseline compare run"></select></label>
+              <label>Run To Compare<select id="compareRight" aria-label="Run to compare against baseline"></select></label>
+              <button id="loadCompare" class="secondary" type="button">Compare First Turns</button>
+            </div>
+          </div>
+          <div id="compareOutput"></div>
+        </div>
+        <div data-dialogue-panel="inspect" style="display:none">
+          <div class="band">
+            <h2>Turn Inspector</h2>
+            <div id="inspectorMessage" class="muted"></div>
+            <div class="row">
+              <label>Run<select id="inspectorRunSelect" aria-label="Inspect run"></select></label>
+              <button id="loadInspector" class="secondary" type="button">Load Inspector</button>
+            </div>
+            <div class="muted">Run: <span id="inspectorRunId"></span></div>
+            <label for="turnSelect">Turn / Entry</label>
+            <select id="turnSelect"></select>
+          </div>
+          <div id="turnInspector"></div>
+        </div>
+        <div data-dialogue-panel="browser" style="display:none">
+          <div class="log-toolbar">
+            <label>Run<select id="logRunSelect"></select></label>
+            <label>Filter<input id="logFilter" placeholder="Search step, entity, component, summary, raw JSON"></label>
+            <button id="loadLog" class="secondary" type="button">Load Log</button>
+          </div>
+          <div id="logMessage" class="muted"></div>
+          <div id="logArtifactLink" class="muted"></div>
+          <div id="logEntries"></div>
+          <h2>Selected Entry</h2>
+          <pre id="logDetails">No entry selected.</pre>
+        </div>
       </div>
 
       <div data-tab-panel="candidates" id="tabCandidates" style="display:none">
@@ -558,73 +657,7 @@
         </details>
       </div>
 
-      <div data-tab-panel="logs" id="tabLogs" style="display:none">
-        <div class="subtabs">
-          <button data-logs-tab="browser" class="active" type="button">Log Browser</button>
-          <button data-logs-tab="snapshot" type="button">Snapshot</button>
-        </div>
-        <div data-logs-panel="browser">
-          <div class="log-toolbar">
-            <label>Run<select id="logRunSelect"></select></label>
-            <label>Filter<input id="logFilter" placeholder="Search step, entity, component, summary, raw JSON"></label>
-            <button id="loadLog" class="secondary" type="button">Load Log</button>
-          </div>
-          <div id="logMessage" class="muted"></div>
-          <div id="logArtifactLink" class="muted"></div>
-          <div id="logEntries"></div>
-          <h2>Selected Entry</h2>
-          <pre id="logDetails">No entry selected.</pre>
-        </div>
-        <div data-logs-panel="snapshot" style="display:none">
-          <h2>Full Draft Snapshot</h2>
-          <textarea id="snapshotJson"></textarea>
-        </div>
-      </div>
-
       <div data-tab-panel="help" id="tabHelp" style="display:none"></div>
-    </section>
-    <section>
-      <div class="band">
-        <h2>Run Control</h2>
-        <div class="row">
-          <button id="controlPlay" data-command="play" class="secondary">Play</button>
-          <button id="controlPause" data-command="pause" class="secondary">Pause</button>
-          <button id="controlStep" data-command="step" class="secondary">Step</button>
-          <button id="controlStop" data-command="stop" class="secondary">Stop</button>
-        </div>
-      </div>
-      <div class="band">
-        <h2>Status</h2>
-        <div id="message" class="muted"></div>
-        <dl id="runSummary" class="status-grid"></dl>
-        <pre id="status" class="status"></pre>
-      </div>
-      <div class="band">
-        <h2>Recent Runs</h2>
-        <ul id="recentRuns"></ul>
-      </div>
-      <div class="band">
-        <h2>First-Turn Compare</h2>
-        <div id="compareMessage" class="muted"></div>
-        <div class="row">
-          <label>Side A<select id="compareLeft" aria-label="Compare side A run"></select></label>
-          <label>Side B<select id="compareRight" aria-label="Compare side B run"></select></label>
-          <button id="loadCompare" class="secondary" type="button">Compare</button>
-        </div>
-        <div id="compareOutput"></div>
-      </div>
-      <div class="band">
-        <h2>Turn Inspector</h2>
-        <div id="inspectorMessage" class="muted"></div>
-        <div class="row">
-          <input id="inspectorRunInput" aria-label="Run id" placeholder="run id">
-          <button id="loadInspector" class="secondary" type="button">Load</button>
-        </div>
-        <div class="muted">Run: <span id="inspectorRunId"></span></div>
-        <label for="turnSelect">Turn / Entry</label>
-        <select id="turnSelect"></select>
-        <div id="turnInspector"></div>
-      </div>
     </section>
   </main>
   <script src="/static/app.js"></script>
