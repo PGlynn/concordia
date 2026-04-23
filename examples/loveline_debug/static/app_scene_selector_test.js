@@ -1,8 +1,10 @@
 const assert = require("assert/strict");
 
 const {
+  applySceneTypeFormBlock,
   applySceneFormBlocks,
   sceneEditorHtml,
+  sceneTypeEditorHtml,
   sceneSelectorHtml,
   sceneTypeSelectorHtml,
 } = require("./app.js");
@@ -28,6 +30,18 @@ function sceneBlock(index, values) {
       if (selector === "[data-scene-premise]") return premises;
       return [];
     },
+  };
+}
+
+function sceneTypeBlock(values) {
+  const fields = new Map([
+    ['[data-scene-type-field="name"]', {value: values.name}],
+    ['[data-scene-type-field="rounds"]', {value: values.rounds}],
+    ['[data-scene-type-field="call_to_action"]', {value: values.call_to_action}],
+    ['[data-scene-type-field="instructions_override"]', {value: values.instructions_override || ""}],
+  ]);
+  return {
+    querySelector: (selector) => fields.get(selector),
   };
 }
 
@@ -75,6 +89,77 @@ function testSceneTypeSelectorRendersOneSelectedDefinition() {
   assert.match(html, /<option value="proposal" selected>proposal<\/option>/);
 }
 
+function testSceneTypeEditorIncludesInstructionsOverrideField() {
+  const html = sceneTypeEditorHtml("pod_date", {
+    rounds: 1,
+    call_to_action: "Say one short spoken reply.",
+    instructions_override: "Keep the tone flirty but grounded.",
+  });
+
+  assert.match(html, /Call to Action/);
+  assert.match(html, /Instructions Override/);
+  assert.match(
+    html,
+    /Optional local Loveline debug override\. Leave blank to use stock Concordia game master instructions\./,
+  );
+  assert.match(html, /Keep the tone flirty but grounded\./);
+}
+
+function testSceneTypeFormBlockPersistsInstructionsOverride() {
+  const next = applySceneTypeFormBlock(
+    {
+      pod_date: {rounds: 2, call_to_action: "Old CTA"},
+    },
+    "pod_date",
+    sceneTypeBlock({
+      name: "pod_date",
+      rounds: "3",
+      call_to_action: "New CTA",
+      instructions_override: "Keep it more playful.",
+    }),
+    {rounds: 2, call_to_action: "Old CTA"},
+  );
+
+  assert.deepEqual(next, {
+    pod_date: {
+      rounds: 3,
+      call_to_action: "New CTA",
+      instructions_override: "Keep it more playful.",
+    },
+  });
+}
+
+function testSceneTypeFormBlockDropsBlankInstructionsOverride() {
+  const next = applySceneTypeFormBlock(
+    {
+      pod_date: {
+        rounds: 2,
+        call_to_action: "Old CTA",
+        instructions_override: "Old override",
+      },
+    },
+    "pod_date",
+    sceneTypeBlock({
+      name: "pod_date",
+      rounds: "2",
+      call_to_action: "Old CTA",
+      instructions_override: "   ",
+    }),
+    {
+      rounds: 2,
+      call_to_action: "Old CTA",
+      instructions_override: "Old override",
+    },
+  );
+
+  assert.deepEqual(next, {
+    pod_date: {
+      rounds: 2,
+      call_to_action: "Old CTA",
+    },
+  });
+}
+
 function testRenderedSceneCollectionPreservesHiddenScenes() {
   const scenes = [
     {
@@ -116,5 +201,8 @@ function testRenderedSceneCollectionPreservesHiddenScenes() {
 testSelectorMarksOnlyChosenSceneSelected();
 testSceneEditorRendersOneSceneBlock();
 testSceneTypeSelectorRendersOneSelectedDefinition();
+testSceneTypeEditorIncludesInstructionsOverrideField();
+testSceneTypeFormBlockPersistsInstructionsOverride();
+testSceneTypeFormBlockDropsBlankInstructionsOverride();
 testRenderedSceneCollectionPreservesHiddenScenes();
 console.log("app_scene_selector_test passed");

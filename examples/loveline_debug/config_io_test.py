@@ -9,6 +9,7 @@ from concordia.language_model import no_language_model
 from concordia.typing import prefab as prefab_lib
 from examples.loveline_debug import basic_entity_controls
 from examples.loveline_debug import config_io
+from examples.loveline_debug import scene_type_instructions
 
 
 def _embedder(text: str):
@@ -176,6 +177,60 @@ class ConfigIoTest(absltest.TestCase):
             "PersonBySituation": False,
         },
     )
+
+  def test_scene_type_instructions_override_persists_through_draft_json(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["instructions_override"] = (
+        "Run the pod date with a warmer, lighter tone."
+    )
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    path = config_io.save_draft(draft, "scene_type_override", paths)
+    stored = config_io.load_json(path)
+    loaded = config_io.load_draft("scene_type_override", paths)
+
+    self.assertEqual(
+        stored["scene_types"]["pod_date"]["instructions_override"],
+        "Run the pod date with a warmer, lighter tone.",
+    )
+    self.assertEqual(
+        loaded["scene_types"]["pod_date"]["instructions_override"],
+        "Run the pod date with a warmer, lighter tone.",
+    )
+
+  def test_build_config_adds_local_scene_type_instructions_component(self):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["instructions_override"] = (
+        "Keep the scene emotionally restrained."
+    )
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    extra_components = gm_instances[0].params["extra_components"]
+    self.assertIsInstance(
+        extra_components["instructions"],
+        scene_type_instructions.SceneTypeInstructionsOverride,
+    )
+
+  def test_build_config_skips_local_scene_type_instructions_component_when_blank(
+      self,
+  ):
+    draft = config_io.make_default_draft()
+    draft["scene_types"]["pod_date"]["instructions_override"] = "   "
+
+    config = config_io.build_config(draft)
+
+    gm_instances = [
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.GAME_MASTER
+    ]
+    self.assertNotIn("extra_components", gm_instances[0].params)
 
   def test_debug_basic_entity_build_omits_disabled_question_components(self):
     entity_config = basic_entity_controls.Entity(

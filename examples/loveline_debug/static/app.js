@@ -537,6 +537,25 @@ function selectedSceneType(sceneTypes = draft?.scene_types || {}) {
   return selectedSceneTypeName;
 }
 
+function sceneTypeEditorHtml(name, cfg = {}) {
+  return `<article class="editor-block compact" data-scene-type="${escapeHtml(name)}">
+      <div class="block-title">
+        <h3>${escapeHtml(name)}</h3>
+        <button class="secondary small" data-remove-type="${escapeHtml(name)}">Remove</button>
+      </div>
+      <div class="grid type-grid">
+        <label>Type Key<input data-scene-type-field="name" value="${escapeHtml(name)}"></label>
+        <label>Default Rounds<input type="number" min="1" data-scene-type-field="rounds" value="${escapeHtml(cfg.rounds || 1)}"></label>
+      </div>
+      <label>Call to Action<textarea data-scene-type-field="call_to_action">${escapeHtml(cfg.call_to_action || "")}</textarea></label>
+      <label>Instructions Override<textarea data-scene-type-field="instructions_override" placeholder="Optional local Loveline debug override. Leave blank to use stock Concordia game master instructions.">${escapeHtml(cfg.instructions_override || "")}</textarea></label>
+      <details>
+        <summary>Exact scene type JSON</summary>
+        <textarea class="json-box" id="sceneTypeRaw">${escapeHtml(pretty(cfg))}</textarea>
+      </details>
+    </article>`;
+}
+
 function renderSceneTypeEditor() {
   const sceneTypes = draft.scene_types || {};
   const name = selectedSceneType(sceneTypes);
@@ -547,22 +566,7 @@ function renderSceneTypeEditor() {
     return;
   }
   const cfg = sceneTypes[name] || {};
-  $("sceneTypeEditor").innerHTML =
-    `<article class="editor-block compact" data-scene-type="${escapeHtml(name)}">
-      <div class="block-title">
-        <h3>${escapeHtml(name)}</h3>
-        <button class="secondary small" data-remove-type="${escapeHtml(name)}">Remove</button>
-      </div>
-      <div class="grid type-grid">
-        <label>Type Key<input data-scene-type-field="name" value="${escapeHtml(name)}"></label>
-        <label>Default Rounds<input type="number" min="1" data-scene-type-field="rounds" value="${escapeHtml(cfg.rounds || 1)}"></label>
-      </div>
-      <label>Call to Action<textarea data-scene-type-field="call_to_action">${escapeHtml(cfg.call_to_action || "")}</textarea></label>
-      <details>
-        <summary>Exact scene type JSON</summary>
-        <textarea class="json-box" id="sceneTypeRaw">${escapeHtml(pretty(cfg))}</textarea>
-      </details>
-    </article>`;
+  $("sceneTypeEditor").innerHTML = sceneTypeEditorHtml(name, cfg);
 }
 
 function clampSelectedSceneIndex(scenes = draft?.scenes || []) {
@@ -754,13 +758,7 @@ function collectSceneTypeForms() {
   const raw = parseJsonField("sceneTypeRaw", draft.scene_types?.[oldName] || {});
   const name = block.querySelector('[data-scene-type-field="name"]').value.trim();
   if (!name) return;
-  const next = {...(draft.scene_types || {})};
-  delete next[oldName];
-  next[name] = {
-    ...raw,
-    rounds: Number(block.querySelector('[data-scene-type-field="rounds"]').value || 1),
-    call_to_action: block.querySelector('[data-scene-type-field="call_to_action"]').value,
-  };
+  const next = applySceneTypeFormBlock(draft.scene_types || {}, oldName, block, raw);
   if (oldName !== name) {
     draft.scenes = (draft.scenes || []).map((scene) =>
       scene.type === oldName ? {...scene, type: name} : scene
@@ -805,6 +803,26 @@ function applySceneFormBlocks(scenes, blocks, rawSceneForIndex) {
     nextScenes[index] = scene;
   });
   return nextScenes;
+}
+
+function applySceneTypeFormBlock(sceneTypes, oldName, block, rawSceneType) {
+  const name = block.querySelector('[data-scene-type-field="name"]').value.trim();
+  if (!name) return {...sceneTypes};
+  const next = {...sceneTypes};
+  delete next[oldName];
+  const instructionsOverride = block.querySelector('[data-scene-type-field="instructions_override"]').value;
+  const sceneType = {
+    ...rawSceneType,
+    rounds: Number(block.querySelector('[data-scene-type-field="rounds"]').value || 1),
+    call_to_action: block.querySelector('[data-scene-type-field="call_to_action"]').value,
+  };
+  if (instructionsOverride.trim()) {
+    sceneType.instructions_override = instructionsOverride;
+  } else {
+    delete sceneType.instructions_override;
+  }
+  next[name] = sceneType;
+  return next;
 }
 
 function collectScenesForms() {
@@ -1993,7 +2011,9 @@ if (typeof module !== "undefined") {
     stockBasicEntityComponentSettings,
     stockBasicEntityComponentTogglesHtml,
     entityPrefabOptionsHtml,
+    applySceneTypeFormBlock,
     sceneEditorHtml,
+    sceneTypeEditorHtml,
     sceneSelectorHtml,
     sceneTypeSelectorHtml,
     logSearchText,

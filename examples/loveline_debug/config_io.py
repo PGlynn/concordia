@@ -18,6 +18,7 @@ from concordia.typing import entity as entity_lib
 from concordia.typing import prefab as prefab_lib
 from concordia.typing import scene as scene_lib
 from examples.loveline_debug import basic_entity_controls
+from examples.loveline_debug import scene_type_instructions
 
 
 STARTER_ROOT = Path(
@@ -413,6 +414,9 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
   contestants = draft["contestants"]
   player_names = [item["name"] for item in contestants]
   gm_name = draft["scene_defaults"].get("main_game_master_name", "Show Runner")
+  scene_type_overrides = scene_type_instructions.scene_type_instruction_overrides(
+      draft["scene_types"]
+  )
   source_root = Path(draft.get("source_root", STARTER_ROOT))
   shared_memories = (
       load_json(StarterPaths(source_root).persona_bundle_json)
@@ -457,6 +461,19 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
               "name": gm_name,
               "scenes": build_scene_specs(draft, gm_name),
               "allow_llm_fallback": False,
+              **(
+                  {
+                      "extra_components": {
+                          "instructions": (
+                              scene_type_instructions.SceneTypeInstructionsOverride(
+                                  scene_type_overrides
+                              )
+                          )
+                      }
+                  }
+                  if scene_type_overrides
+                  else {}
+              ),
           },
       )
   )

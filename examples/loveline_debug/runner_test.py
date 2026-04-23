@@ -269,6 +269,9 @@ class RunnerTest(absltest.TestCase):
             "PersonBySituation": False,
         },
     })
+    draft["scene_types"]["pod_date"]["instructions_override"] = (
+        "Keep the pod scene grounded and slightly guarded."
+    )
     record = runner.RunRecord(
         run_id="run",
         status="queued",
@@ -356,6 +359,10 @@ class RunnerTest(absltest.TestCase):
             "SelfPerception": True,
             "PersonBySituation": False,
         },
+    )
+    self.assertEqual(
+        captured_snapshots[0]["scene_types"]["pod_date"]["instructions_override"],
+        "Keep the pod scene grounded and slightly guarded.",
     )
 
 
