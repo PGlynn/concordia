@@ -17,16 +17,20 @@
     }
     * { box-sizing: border-box; }
     body {
+      height: 100vh;
       margin: 0;
       font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
       background: white;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
     }
     header {
       min-height: 58px;
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) minmax(360px, 560px) minmax(360px, 1fr);
+      gap: 12px;
       align-items: center;
-      justify-content: space-between;
       padding: 10px 18px;
       border-bottom: 1px solid var(--line);
       background: #fff;
@@ -35,7 +39,7 @@
     h2 { font-size: 15px; margin: 0 0 10px; }
     h3 { font-size: 14px; margin: 0; }
     main {
-      height: calc(100vh - 58px);
+      min-height: 0;
       display: grid;
       grid-template-columns: 240px minmax(540px, 1fr) 360px;
       overflow: hidden;
@@ -111,7 +115,17 @@
       cursor: not-allowed;
       opacity: 0.48;
     }
-    .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .tabs {
+      position: sticky;
+      top: -14px;
+      z-index: 10;
+      display: flex;
+      gap: 6px;
+      margin: -14px -14px 12px;
+      padding: 14px;
+      background: white;
+      border-bottom: 1px solid var(--line);
+    }
     .tabs button { background: white; color: var(--ink); border-color: var(--line); }
     .tabs button.active { background: var(--accent); color: white; border-color: var(--accent); }
     .subtabs { display: flex; gap: 6px; margin-bottom: 12px; }
@@ -248,6 +262,9 @@
       overflow-wrap: anywhere;
     }
     .draft-loader {
+      padding: 8px;
+      border: 1px solid #99f6e4;
+      border-radius: 6px;
       border-color: #99f6e4;
       background: #f0fdfa;
     }
@@ -271,7 +288,7 @@
     }
     .draft-loader .row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto auto;
     }
     .dialogue-context {
       margin-bottom: 12px;
@@ -303,6 +320,36 @@
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
+    .dialogue-raw summary {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .dialogue-raw pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin: 6px 0 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 8px;
+    }
+    .show-flow-summary {
+      display: grid;
+      gap: 8px;
+    }
+    .show-flow-summary ol {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding-left: 20px;
+    }
+    .show-flow-summary li {
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .show-flow-summary li:last-child { border-bottom: 0; padding-bottom: 0; }
     .flow-panel {
       display: grid;
       gap: 0;
@@ -356,19 +403,28 @@
     ul { padding-left: 18px; }
     a { color: #0f766e; }
     @media (max-width: 1050px) {
+      body { height: auto; display: block; }
       main { grid-template-columns: 1fr; height: auto; overflow: visible; }
       section { border-right: 0; border-bottom: 1px solid var(--line); }
       .grid.two, .grid.scene-grid, .grid.type-grid, .compare-grid { grid-template-columns: 1fr; }
       .log-toolbar { grid-template-columns: 1fr; }
       .draft-loader .row { grid-template-columns: 1fr; }
-      header { align-items: stretch; flex-direction: column; gap: 10px; }
+      header { display: flex; align-items: stretch; flex-direction: column; gap: 10px; }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Loveline Concordia Debug</h1>
-    <div class="row" style="max-width: 520px">
+    <div class="draft-loader">
+      <label for="loadDraft">Saved Draft</label>
+      <div class="row">
+        <select id="loadDraft"></select>
+        <button id="loadDraftBtn" class="secondary" type="button">Load</button>
+        <button id="createDraft" class="secondary" type="button">Create New</button>
+      </div>
+    </div>
+    <div class="row">
       <input id="draftName" value="two_candidate_debug" aria-label="Draft name">
       <span id="dirtyState" class="muted" aria-live="polite">No unsaved changes</span>
       <button id="saveDraft">Save Draft</button>
@@ -378,16 +434,8 @@
   <main>
     <section>
       <div class="band">
-        <h2>Source</h2>
-        <div id="sourceRoot" class="muted"></div>
-      </div>
-      <div class="band draft-loader">
-        <h2>Saved Draft</h2>
-        <label for="loadDraft">Draft</label>
-        <div class="row">
-          <select id="loadDraft"></select>
-          <button id="loadDraftBtn" class="secondary">Load</button>
-        </div>
+        <h2>Show-Flow Summary</h2>
+        <div id="showFlowSummary" class="show-flow-summary"></div>
       </div>
       <div class="band">
         <h2>Restore / Reset</h2>
@@ -560,8 +608,8 @@
         <h2>First-Turn Compare</h2>
         <div id="compareMessage" class="muted"></div>
         <div class="row">
-          <select id="compareLeft" aria-label="Left run"></select>
-          <select id="compareRight" aria-label="Right run"></select>
+          <label>Side A<select id="compareLeft" aria-label="Compare side A run"></select></label>
+          <label>Side B<select id="compareRight" aria-label="Compare side B run"></select></label>
           <button id="loadCompare" class="secondary" type="button">Compare</button>
         </div>
         <div id="compareOutput"></div>

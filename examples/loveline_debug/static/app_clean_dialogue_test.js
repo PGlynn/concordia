@@ -94,15 +94,18 @@ function testRenderCleanDialogueShowsContextAndConversation() {
 
   assert.match(elements.get("cleanDialogueContext").innerHTML, /run_1/);
   assert.match(elements.get("cleanDialogueContext").innerHTML, /Alex vs Blake/);
+  assert.match(elements.get("cleanDialogueContext").innerHTML, /Scene Count/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /dialogue-turn/);
-  assert.match(elements.get("cleanDialogueView").innerHTML, /Spoken turn 1 \| engine step 1/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /Spoken turn 1/);
+  assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /engine step/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /Alex: I want the real thing/);
-  assert.match(elements.get("cleanDialogueView").innerHTML, /Raw: I want the real thing/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /Show raw utterance/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /<details class="dialogue-raw">/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /That means a lot to hear/);
   assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /The date continues/);
 }
 
-function testCleanDialogueShowsEngineStepWhenFirstSpeechStartsAtStepTwo() {
+function testCleanDialogueHidesEngineStepWhenFirstSpeechStartsAtStepTwo() {
   const elements = installDom();
   renderCleanDialogue({
     ...state,
@@ -113,14 +116,14 @@ function testCleanDialogueShowsEngineStepWhenFirstSpeechStartsAtStepTwo() {
     ],
   });
 
-  assert.match(elements.get("cleanDialogueView").innerHTML, /First spoken turn is engine step 2/);
-  assert.match(elements.get("cleanDialogueView").innerHTML, /Spoken turn 1 \| engine step 2/);
-  assert.equal(cleanDialogueStepLabel({step: 2}, 0), "Spoken turn 1 | engine step 2");
+  assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /First spoken turn is engine step 2/);
+  assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /engine step 2/);
+  assert.equal(cleanDialogueStepLabel({step: 2}, 0), "Spoken turn 1");
 }
 
 testIndexExposesDialogueAsPrimaryTab();
 testCleanDialogueFiltersCandidateDialogueOnly();
 testCleanDialogueContextPrefersStateSummary();
 testRenderCleanDialogueShowsContextAndConversation();
-testCleanDialogueShowsEngineStepWhenFirstSpeechStartsAtStepTwo();
+testCleanDialogueHidesEngineStepWhenFirstSpeechStartsAtStepTwo();
 console.log("app_clean_dialogue_test passed");

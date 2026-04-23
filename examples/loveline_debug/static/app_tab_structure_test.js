@@ -42,6 +42,21 @@ function testSnapshotLivesUnderLogs() {
   assert.match(html, /data-logs-panel="snapshot"/);
 }
 
+function testTabsStayVisibleWhilePanelsScroll() {
+  assert.match(html, /\.tabs \{[\s\S]*position: sticky;/);
+  assert.match(html, /\.tabs \{[\s\S]*top: -14px;/);
+}
+
+function testSavedDraftPickerLivesInHeader() {
+  const header = html.match(/<header>([\s\S]*?)<\/header>/)[1];
+  const firstSection = html.match(/<main>[\s\S]*?<section>([\s\S]*?)<\/section>/)[1];
+
+  assert.match(header, /<select id="loadDraft">/);
+  assert.match(header, /id="createDraft"/);
+  assert.doesNotMatch(firstSection, /<select id="loadDraft">/);
+  assert.match(firstSection, /id="showFlowSummary"/);
+}
+
 function testSemanticsAreVisibleInUiCopy() {
   assert.match(html, /Chooses the two active contestants for this draft/);
   assert.match(html, /scene\.participants/);
@@ -51,5 +66,7 @@ function testSemanticsAreVisibleInUiCopy() {
 testSimulationConfigIsLastSecondaryTab();
 testScenesAreSplitIntoUserFacingSurfaces();
 testSnapshotLivesUnderLogs();
+testTabsStayVisibleWhilePanelsScroll();
+testSavedDraftPickerLivesInHeader();
 testSemanticsAreVisibleInUiCopy();
 console.log("app_tab_structure_test passed");

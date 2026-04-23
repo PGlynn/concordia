@@ -390,6 +390,7 @@ function renderConfigTab() {
   $("candidateTags").innerHTML = (draft.contestants || []).map((item) =>
     `<span class="pill">${escapeHtml(item.gender)}: ${escapeHtml(item.name)}</span>`
   ).join("");
+  renderShowFlowSummary();
 }
 
 function renderCandidatesTab() {
@@ -536,6 +537,44 @@ function sceneSelectorHtml(scenes, selectedIndex) {
   return `<label>Scene<select id="sceneSelect">${options}</select></label>`;
 }
 
+function sceneRounds(scene, sceneTypes = draft?.scene_types || {}) {
+  return scene?.num_rounds || sceneTypes?.[scene?.type]?.rounds || "";
+}
+
+function showFlowSummaryHtml(value = draft) {
+  const scenes = value?.scenes || [];
+  const sceneTypes = value?.scene_types || {};
+  const contestants = value?.contestants || [];
+  const pair = contestants.map((item) => item.name).filter(Boolean).join(" vs ");
+  const gm = value?.scene_defaults?.main_game_master_name || "Show Runner";
+  const meta = [
+    ["Scene Count", scenes.length],
+    ["Pair", pair],
+    ["Show Runner", gm],
+  ];
+  const sceneRows = scenes.length
+    ? `<ol>${scenes.map((scene, index) => {
+        const participants = (scene.participants || []).filter(Boolean).join(", ") || "No participants";
+        const rounds = sceneRounds(scene, sceneTypes);
+        const type = scene.type || "untyped";
+        return `<li>
+          <strong>${escapeHtml(scene.id || `Scene ${index + 1}`)}</strong>
+          <div class="muted">${escapeHtml(type)}${rounds ? ` | ${escapeHtml(rounds)} round${Number(rounds) === 1 ? "" : "s"}` : ""}</div>
+          <div>${escapeHtml(participants)}</div>
+        </li>`;
+      }).join("")}</ol>`
+    : '<div class="muted">No show-flow scenes loaded.</div>';
+  return `<dl class="status-grid compact">${meta.map(([key, value]) =>
+    `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
+  ).join("")}</dl>${sceneRows}`;
+}
+
+function renderShowFlowSummary() {
+  const element = $("showFlowSummary");
+  if (!element) return;
+  element.innerHTML = showFlowSummaryHtml(draft);
+}
+
 function sceneEditorHtml(scene, index, names) {
   const premise = scene.premise || {};
   const participantChecks = names.map((name) => {
@@ -589,12 +628,13 @@ function renderShowFlowTab() {
 
 function hydrateInputs() {
   $("draftName").value = draft.name || "two_candidate_debug";
-  $("sourceRoot").textContent = source.starter_root;
+  if ($("sourceRoot")) $("sourceRoot").textContent = source.starter_root;
   renderConfigTab();
   renderCandidatesTab();
   renderShowFlowTab();
   renderSceneTypeEditor();
   renderHelpTab();
+  renderShowFlowSummary();
   $("snapshotJson").value = pretty(draft);
 }
 
@@ -753,7 +793,7 @@ function collectDraft() {
 }
 
 function populateChrome() {
-  $("sourceRoot").textContent = source.starter_root;
+  if ($("sourceRoot")) $("sourceRoot").textContent = source.starter_root;
 }
 
 async function refreshDrafts() {
@@ -860,8 +900,8 @@ function renderRecentRuns(runs) {
         <button class="secondary small" data-inspect-run="${escapeHtml(id)}" type="button">Inspect</button>
         <button class="secondary small" data-dialogue-run="${escapeHtml(id)}" type="button">Dialogue</button>
         <button class="secondary small" data-log-run="${escapeHtml(id)}" type="button">Log</button>
-        <button class="secondary small" data-compare-left="${escapeHtml(id)}" type="button">Left</button>
-        <button class="secondary small" data-compare-right="${escapeHtml(id)}" type="button">Right</button>
+        <button class="secondary small" data-compare-left="${escapeHtml(id)}" type="button" aria-label="Use ${escapeHtml(id)} as compare side A">Use as A</button>
+        <button class="secondary small" data-compare-right="${escapeHtml(id)}" type="button" aria-label="Use ${escapeHtml(id)} as compare side B">Use as B</button>
         <button class="secondary small" data-delete-run="${escapeHtml(id)}" type="button">Delete</button>
         ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
         ${json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">json</a>` : ""}
@@ -1113,11 +1153,7 @@ function cleanDialogueContext(state = cleanDialogueState, status = latestStatus)
 }
 
 function cleanDialogueStepLabel(entry, spokenIndex) {
-  const step = entry?.step;
-  const spoken = `Spoken turn ${spokenIndex + 1}`;
-  return step === undefined || step === null || step === ""
-    ? spoken
-    : `${spoken} | engine step ${step}`;
+  return `Spoken turn ${spokenIndex + 1}`;
 }
 
 function renderCleanDialogue(state = cleanDialogueState) {
@@ -1140,7 +1176,7 @@ function renderCleanDialogue(state = cleanDialogueState) {
     ["Run", state.run_id || ""],
     ["Pair", (context.selected_pair || context.candidates || []).filter(Boolean).join(" vs ")],
     ["Settings", runContextLabel(context)],
-    ["Scenes", context.scene_count ?? ""],
+    ["Scene Count", context.scene_count ?? ""],
   ];
   $("cleanDialogueContext").innerHTML = `<dl class="status-grid">${contextRows.map(([key, value]) =>
     `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
@@ -1150,14 +1186,10 @@ function renderCleanDialogue(state = cleanDialogueState) {
     $("cleanDialogueView").innerHTML = '<div class="muted">No candidate dialogue entries found in this run.</div>';
     return;
   }
-  const firstStep = entries[0]?.step;
-  const stepNote = Number(firstStep) > 1
-    ? `<div class="muted">First spoken turn is engine step ${escapeHtml(firstStep)} because earlier engine steps contain setup or non-dialogue records.</div>`
-    : "";
-  $("cleanDialogueView").innerHTML = `${stepNote}<div class="dialogue-list">${entries.map((entry, index) => {
+  $("cleanDialogueView").innerHTML = `<div class="dialogue-list">${entries.map((entry, index) => {
     const text = cleanDialogueText(entry);
     const raw = entry.raw_utterance_text && entry.raw_utterance_text !== text
-      ? `<div class="muted">Raw: ${escapeHtml(entry.raw_utterance_text)}</div>`
+      ? `<details class="dialogue-raw"><summary>Show raw utterance</summary><pre>${escapeHtml(entry.raw_utterance_text)}</pre></details>`
       : "";
     return `<article class="dialogue-turn">
       <div class="dialogue-turn-header">
@@ -1273,14 +1305,22 @@ async function resetToDefaultSourceDraft() {
   setMessage("Default source pair restored.");
 }
 
+async function createNewDraft() {
+  draft = await api("/api/draft/default");
+  draft.name = "new_loveline_debug_draft";
+  hydrateInputs();
+  markDirty();
+  setMessage("New browser draft created from the default source pair.");
+}
+
 function renderCompare() {
   if (!compareState) return;
   setCompareMessage("");
   $("compareOutput").innerHTML = `
     <div class="compare-diffs">${renderCompareDiffs(compareState.diffs || [])}</div>
     <div class="compare-grid">
-      ${renderCompareSide("Left", compareState.left)}
-      ${renderCompareSide("Right", compareState.right)}
+      ${renderCompareSide("Side A", compareState.left)}
+      ${renderCompareSide("Side B", compareState.right)}
     </div>`;
 }
 
@@ -1300,7 +1340,7 @@ function renderCompareSide(label, side) {
   const meta = [
     ["Run", side?.run_id || ""],
     ["Candidates", (config.candidates || []).filter(Boolean).join(" vs ")],
-    ["Scenes", config.scene_count ?? ""],
+    ["Scene Count", config.scene_count ?? ""],
     ["Max Steps", config.max_steps ?? ""],
     ["Model", config.disable_language_model ? "disabled" : config.model],
     ["First Actor", turn?.entity_name || ""],
@@ -1473,6 +1513,15 @@ if (typeof document !== "undefined") {
       hydrateInputs();
       markClean();
       setMessage("Draft loaded.");
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("createDraft").addEventListener("click", async () => {
+    try {
+      if (!confirmDiscardChanges("create a new draft")) return;
+      await createNewDraft();
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -1795,7 +1844,9 @@ if (typeof module !== "undefined") {
     mergeSelectionDraft,
     remapSceneForSelection,
     renderCompareSide,
+    renderRecentRuns,
     renderCleanDialogue,
+    showFlowSummaryHtml,
     stockFlowHelpHtml,
     cleanDialogueEntries,
     cleanDialogueStepLabel,
