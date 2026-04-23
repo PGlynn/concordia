@@ -90,10 +90,31 @@ function runContextLabel(context) {
   ].filter(Boolean).join(" | ");
 }
 
+function runDraftIdentity(summary) {
+  return [
+    summary?.draft_filename,
+    summary?.draft_name,
+    summary?.name,
+  ].find((value) => typeof value === "string" && value.trim()) || "";
+}
+
+function formatRunTimestamp(value) {
+  if (!value || typeof value !== "string") return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(parsed) + " UTC";
+}
+
 function runOptionLabel(run) {
   const summary = run.summary || run.run_context || {};
+  const draftIdentity = runDraftIdentity(summary);
+  const timestamp = formatRunTimestamp(run.started_at || run.finished_at || summary.snapshot_at);
   const pair = (summary.selected_pair || summary.candidates || []).filter(Boolean).join(" vs ");
-  return [run.run_id, run.status, pair].filter(Boolean).join(" - ");
+  return [draftIdentity, timestamp, run.status, pair, run.run_id].filter(Boolean).join(" - ");
 }
 
 function displayValue(value) {
@@ -1130,7 +1151,7 @@ function renderCleanDialogueRunOptions(runs, active = null) {
   const availableRuns = logRuns.length ? logRuns : runs;
   const items = [];
   if (active && ["starting", "running"].includes(active.status)) {
-    items.push({value: "__active__", label: `Active run - ${active.run_id}`});
+    items.push({value: "__active__", label: `Active run - ${runOptionLabel(active)}`});
   }
   availableRuns.forEach((run) => items.push({value: run.run_id, label: runOptionLabel(run)}));
   const preferred = items.some((item) => item.value === "__active__") ? "__active__" : "";
@@ -2181,6 +2202,9 @@ if (typeof module !== "undefined") {
     sceneTypeEditorHtml,
     sceneSelectorHtml,
     sceneTypeSelectorHtml,
+    runDraftIdentity,
+    runOptionLabel,
+    formatRunTimestamp,
     logSearchText,
     runContextLabel,
     runOperationButtonState,

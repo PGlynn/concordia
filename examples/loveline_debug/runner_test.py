@@ -133,6 +133,7 @@ class RunnerTest(absltest.TestCase):
 
   def test_draft_summary_captures_pair_and_run_settings(self):
     draft = {
+        "name": "alex_blake_debug",
         "source_root": "/tmp/starter",
         "selected_candidate_ids": ["alex_id", "blake_id"],
         "contestants": [{"name": "Alex"}, {"name": "Blake"}],
@@ -150,6 +151,8 @@ class RunnerTest(absltest.TestCase):
 
     summary = runner._draft_summary(draft)  # pylint: disable=protected-access
 
+    self.assertEqual(summary["draft_name"], "alex_blake_debug")
+    self.assertEqual(summary["name"], "alex_blake_debug")
     self.assertEqual(summary["selected_pair"], ["Alex", "Blake"])
     self.assertEqual(summary["selected_candidate_ids"], ["alex_id", "blake_id"])
     self.assertEqual(summary["scene_count"], 1)

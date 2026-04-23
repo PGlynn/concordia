@@ -379,6 +379,7 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
   contestants = draft.get("contestants") or []
   run = draft.get("run") or {}
   scene_types = draft.get("scene_types") or {}
+  draft_name = draft.get("name")
   scenes = []
   total_rounds = 0
   for index, scene in enumerate(draft.get("scenes") or []):
@@ -395,6 +396,8 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
         "participants": scene.get("participants") or [],
     })
   return {
+      "draft_name": draft_name,
+      "name": draft_name,
       "selected_pair": [
           item.get("name") for item in contestants if item.get("name")
       ],

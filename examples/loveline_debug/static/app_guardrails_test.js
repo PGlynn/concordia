@@ -6,7 +6,11 @@ const {
   DEFAULT_API_TYPE,
   DEFAULT_MODEL_NAME,
   draftFingerprint,
+  formatRunTimestamp,
+  renderDialogueRunWorkflow,
+  runDraftIdentity,
   runContextLabel,
+  runOptionLabel,
   summarizeDraftContext,
 } = require("./app.js");
 
@@ -78,6 +82,77 @@ function testRunContextLabelKeepsSmokeModeReadable() {
   assert.equal(label, "Alex vs Blake | 9 steps | LM disabled | starts paused | checkpoints");
 }
 
+function testRunDraftIdentityPrefersStableFilenameWhenAvailable() {
+  assert.equal(
+    runDraftIdentity({
+      draft_filename: "alex_blake_experiment.json",
+      draft_name: "alex_blake_experiment",
+      name: "stale-name",
+    }),
+    "alex_blake_experiment.json",
+  );
+  assert.equal(runDraftIdentity({draft_name: "alex_blake_experiment"}), "alex_blake_experiment");
+}
+
+function testFormatRunTimestampMakesIsoReadable() {
+  assert.equal(
+    formatRunTimestamp("2026-04-21T22:15:00+00:00"),
+    "Apr 21, 2026, 10:15 PM UTC",
+  );
+}
+
+function testRunOptionLabelIncludesDraftIdentityAndTimestamp() {
+  const label = runOptionLabel({
+    run_id: "20260421_221500",
+    status: "completed",
+    started_at: "2026-04-21T22:15:00+00:00",
+    summary: {
+      draft_name: "alex_blake_experiment",
+      selected_pair: ["Alex", "Blake"],
+    },
+  });
+
+  assert.equal(
+    label,
+    "alex_blake_experiment - Apr 21, 2026, 10:15 PM UTC - completed - Alex vs Blake - 20260421_221500",
+  );
+}
+
+function testConversationSelectorUsesExpandedActiveRunLabel() {
+  const elements = new Map();
+  for (const id of [
+    "compareLeft",
+    "compareRight",
+    "logRunSelect",
+    "cleanDialogueRunSelect",
+    "inspectorRunSelect",
+  ]) {
+    elements.set(id, {value: "", innerHTML: ""});
+  }
+  global.document = {
+    activeElement: null,
+    getElementById(id) {
+      return elements.get(id) || null;
+    },
+  };
+
+  renderDialogueRunWorkflow([], {
+    run_id: "20260421_221500",
+    status: "running",
+    started_at: "2026-04-21T22:15:00+00:00",
+    summary: {
+      draft_name: "alex_blake_experiment",
+      selected_pair: ["Alex", "Blake"],
+    },
+  });
+
+  assert.match(
+    elements.get("cleanDialogueRunSelect").innerHTML,
+    /Active run - alex_blake_experiment - Apr 21, 2026, 10:15 PM UTC - running - Alex vs Blake - 20260421_221500/,
+  );
+  delete global.document;
+}
+
 function testMetadataFieldsAreReadOnlyInNormalForm() {
   const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 
@@ -90,5 +165,9 @@ testDraftFingerprintIgnoresObjectKeyOrder();
 testSummarizeDraftContextIncludesGuardrailMetadata();
 testRunContextLabelMakesRecentRunsReadable();
 testRunContextLabelKeepsSmokeModeReadable();
+testRunDraftIdentityPrefersStableFilenameWhenAvailable();
+testFormatRunTimestampMakesIsoReadable();
+testRunOptionLabelIncludesDraftIdentityAndTimestamp();
+testConversationSelectorUsesExpandedActiveRunLabel();
 testMetadataFieldsAreReadOnlyInNormalForm();
 console.log("app_guardrails_test passed");
