@@ -4,6 +4,7 @@ const {
   applySceneFormBlocks,
   sceneEditorHtml,
   sceneSelectorHtml,
+  sceneTypeSelectorHtml,
 } = require("./app.js");
 
 function sceneBlock(index, values) {
@@ -58,7 +59,20 @@ function testSceneEditorRendersOneSceneBlock() {
   assert.match(html, /data-scene-index="1"/);
   assert.match(html, /value="pod_followup"/);
   assert.match(html, /Ask a careful question/);
+  assert.match(html, /scene\.participants/);
+  assert.match(html, /type's default rounds/);
   assert.doesNotMatch(html, /pod_intro/);
+}
+
+function testSceneTypeSelectorRendersOneSelectedDefinition() {
+  const html = sceneTypeSelectorHtml({
+    pod_date: {rounds: 1},
+    proposal: {rounds: 2},
+  }, "proposal");
+
+  assert.match(html, /<select id="sceneTypeSelect">/);
+  assert.match(html, /<option value="pod_date">pod_date<\/option>/);
+  assert.match(html, /<option value="proposal" selected>proposal<\/option>/);
 }
 
 function testRenderedSceneCollectionPreservesHiddenScenes() {
@@ -101,5 +115,6 @@ function testRenderedSceneCollectionPreservesHiddenScenes() {
 
 testSelectorMarksOnlyChosenSceneSelected();
 testSceneEditorRendersOneSceneBlock();
+testSceneTypeSelectorRendersOneSelectedDefinition();
 testRenderedSceneCollectionPreservesHiddenScenes();
 console.log("app_scene_selector_test passed");

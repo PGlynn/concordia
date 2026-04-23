@@ -6,6 +6,7 @@ import collections.abc
 import dataclasses
 import datetime as dt
 import json
+import shutil
 import threading
 import traceback
 from pathlib import Path
@@ -142,6 +143,24 @@ class RunManager:
           )
       )
     return runs[:20]
+
+  def delete_run(self, run_id: str) -> dict[str, Any]:
+    run_dir = _safe_run_dir(self._paths.runs_dir, run_id)
+    with self._lock:
+      if (
+          self._active
+          and self._active.run_id == run_id
+          and self._active.status in ("starting", "running")
+      ):
+        raise RuntimeError(f"Run {run_id} is active and cannot be deleted.")
+    if not run_dir.exists() or not run_dir.is_dir():
+      raise FileNotFoundError(f"Run {run_id} does not exist.")
+    shutil.rmtree(run_dir)
+    with self._lock:
+      if self._active and self._active.run_id == run_id:
+        self._active = None
+        self._active_control = None
+    return {"status": "deleted", "run_id": run_id}
 
   def _run_thread(
       self,
@@ -340,6 +359,19 @@ def _enrich_run_manifest(run_dir: Path, manifest: dict[str, Any]) -> dict[str, A
     summary["snapshot_at"] = snapshot.get("snapshot_at")
     enriched["summary"] = {**summary, **(enriched.get("summary") or {})}
   return enriched
+
+
+def _safe_run_dir(runs_root: Path, run_id: str) -> Path:
+  if not run_id or "/" in run_id or "\\" in run_id:
+    raise ValueError("Run id must be a single saved run directory name.")
+  run_dir = runs_root / run_id
+  if run_dir.is_symlink():
+    raise ValueError("Run directory symlinks cannot be deleted.")
+  resolved = run_dir.resolve()
+  root = runs_root.resolve()
+  if resolved.parent != root:
+    raise ValueError("Run path is outside the Loveline runs directory.")
+  return run_dir
 
 
 def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:

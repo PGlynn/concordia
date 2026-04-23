@@ -114,6 +114,9 @@
     .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
     .tabs button { background: white; color: var(--ink); border-color: var(--line); }
     .tabs button.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .subtabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .subtabs button { background: white; color: var(--ink); border-color: var(--line); }
+    .subtabs button.active { background: var(--accent); color: white; border-color: var(--accent); }
     .pill {
       display: inline-block;
       border: 1px solid var(--line);
@@ -404,8 +407,8 @@
         <button data-tab="config" class="active">Config</button>
         <button data-tab="dialogue">Dialogue</button>
         <button data-tab="candidates">Candidates</button>
-        <button data-tab="scenes">Scenes</button>
-        <button data-tab="snapshot">Snapshot</button>
+        <button data-tab="showFlow">Show Flow</button>
+        <button data-tab="sceneEditor">Scene Editor</button>
         <button data-tab="logs">Logs</button>
         <button data-tab="help">Help</button>
       </div>
@@ -422,6 +425,7 @@
         </div>
         <div class="editor-block">
           <div class="block-title"><h2>Pair Selection</h2><button id="applySelection" class="secondary">Apply Pair</button></div>
+          <div class="muted">Chooses the two active contestants for this draft. Each show-flow scene still uses its own <code>scene.participants</code> list.</div>
           <div class="grid two">
             <label>Male Candidate<select id="maleCandidate"></select></label>
             <label>Female Candidate<select id="femaleCandidate"></select></label>
@@ -478,40 +482,56 @@
         </details>
       </div>
 
-      <div data-tab-panel="scenes" id="tabScenes" style="display:none">
+      <div data-tab-panel="showFlow" id="tabShowFlow" style="display:none">
         <div class="editor-block">
           <div class="block-title"><h2>Scene Defaults</h2></div>
           <label>Main Game Master<input id="sceneDefaultsMainGameMaster"></label>
           <label>Default Premise<textarea id="sceneDefaultsPremise"></textarea></label>
         </div>
-        <div class="block-title"><h2>Scene Types</h2><button id="addSceneType" class="secondary small">Add Type</button></div>
-        <div id="sceneTypeEditor"></div>
-        <div class="block-title"><h2>Scene List</h2><button id="addScene" class="secondary small">Add Scene</button></div>
+        <div class="block-title"><h2>Draft-Local Scene Flow</h2><button id="addScene" class="secondary small">Add Scene</button></div>
+        <div class="muted">Scenes are ordered and saved only in this draft. Participants are read from each scene's <code>scene.participants</code>; the active pair only controls which contestants are available here.</div>
         <div id="sceneSelector"></div>
         <div id="sceneListEditor"></div>
         <details>
-          <summary>Scenes payload JSON</summary>
+          <summary>Show flow JSON</summary>
           <button id="applyScenesJson" class="secondary small" type="button">Apply JSON</button>
           <textarea id="scenesJson"></textarea>
         </details>
       </div>
 
-      <div data-tab-panel="snapshot" id="tabSnapshot" style="display:none">
-        <h2>Full Draft Snapshot</h2>
-        <textarea id="snapshotJson"></textarea>
+      <div data-tab-panel="sceneEditor" id="tabSceneEditor" style="display:none">
+        <div class="block-title"><h2>Scene Type Definitions</h2><button id="addSceneType" class="secondary small">Add Type</button></div>
+        <div class="muted">Scene-type rounds are defaults for that type. A draft scene's <code>scene.num_rounds</code> overrides the type default when present.</div>
+        <div id="sceneTypeSelector"></div>
+        <div id="sceneTypeEditor"></div>
+        <details>
+          <summary>Scene types JSON</summary>
+          <button id="applySceneTypesJson" class="secondary small" type="button">Apply JSON</button>
+          <textarea id="sceneTypesJson" class="json-box"></textarea>
+        </details>
       </div>
 
       <div data-tab-panel="logs" id="tabLogs" style="display:none">
-        <div class="log-toolbar">
-          <label>Run<select id="logRunSelect"></select></label>
-          <label>Filter<input id="logFilter" placeholder="Search step, entity, component, summary, raw JSON"></label>
-          <button id="loadLog" class="secondary" type="button">Load Log</button>
+        <div class="subtabs">
+          <button data-logs-tab="browser" class="active" type="button">Log Browser</button>
+          <button data-logs-tab="snapshot" type="button">Snapshot</button>
         </div>
-        <div id="logMessage" class="muted"></div>
-        <div id="logArtifactLink" class="muted"></div>
-        <div id="logEntries"></div>
-        <h2>Selected Entry</h2>
-        <pre id="logDetails">No entry selected.</pre>
+        <div data-logs-panel="browser">
+          <div class="log-toolbar">
+            <label>Run<select id="logRunSelect"></select></label>
+            <label>Filter<input id="logFilter" placeholder="Search step, entity, component, summary, raw JSON"></label>
+            <button id="loadLog" class="secondary" type="button">Load Log</button>
+          </div>
+          <div id="logMessage" class="muted"></div>
+          <div id="logArtifactLink" class="muted"></div>
+          <div id="logEntries"></div>
+          <h2>Selected Entry</h2>
+          <pre id="logDetails">No entry selected.</pre>
+        </div>
+        <div data-logs-panel="snapshot" style="display:none">
+          <h2>Full Draft Snapshot</h2>
+          <textarea id="snapshotJson"></textarea>
+        </div>
       </div>
 
       <div data-tab-panel="help" id="tabHelp" style="display:none"></div>

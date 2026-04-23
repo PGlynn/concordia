@@ -46,6 +46,37 @@ class RunnerTest(absltest.TestCase):
         dict,
     )
 
+  def test_delete_run_removes_saved_artifacts(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    run_dir = paths.runs_dir / "run_1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    (run_dir / "structured_log.json").write_text("[]", encoding="utf-8")
+
+    payload = manager.delete_run("run_1")
+
+    self.assertEqual(payload, {"status": "deleted", "run_id": "run_1"})
+    self.assertFalse(run_dir.exists())
+
+  def test_delete_run_rejects_path_escape_and_active_run(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    run_dir = paths.runs_dir / "run_1"
+    run_dir.mkdir(parents=True)
+    manager._active = runner.RunRecord(  # pylint: disable=protected-access
+        run_id="run_1",
+        status="running",
+        run_dir=run_dir,
+        started_at="2026-04-21T00:00:00+00:00",
+    )
+
+    with self.assertRaisesRegex(ValueError, "single saved run directory"):
+      manager.delete_run("../run_1")
+    with self.assertRaisesRegex(RuntimeError, "active"):
+      manager.delete_run("run_1")
+    self.assertTrue(run_dir.exists())
+
   def test_checkpoint_wrapper_preserves_plain_json_checkpoint_write(self):
     scene_type = scene_lib.SceneTypeSpec(
         name="date",

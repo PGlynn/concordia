@@ -1,6 +1,7 @@
 let source = null;
 let draft = null;
 let activeTab = "config";
+let activeLogsSubTab = "browser";
 let latestStatus = null;
 let inspectorState = null;
 let compareState = null;
@@ -10,6 +11,7 @@ let cleanDraftJson = "";
 let isDirty = false;
 let selectedCandidateIndex = 0;
 let selectedSceneIndex = 0;
+let selectedSceneTypeName = "";
 
 const DEFAULT_API_TYPE = "ollama";
 const DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b";
@@ -468,8 +470,39 @@ function sceneTypeOptions(selectedType) {
   }).join("");
 }
 
+function sceneTypeSelectorHtml(sceneTypes = draft?.scene_types || {}, selectedType = selectedSceneTypeName) {
+  const names = Object.keys(sceneTypes || {});
+  if (!names.length) return "";
+  const selectedName = names.includes(selectedType) ? selectedType : names[0];
+  return `<label>Scene Type<select id="sceneTypeSelect">${names.map((name) => {
+    const selected = name === selectedName ? " selected" : "";
+    return `<option value="${escapeHtml(name)}"${selected}>${escapeHtml(name)}</option>`;
+  }).join("")}</select></label>`;
+}
+
+function selectedSceneType(sceneTypes = draft?.scene_types || {}) {
+  const names = Object.keys(sceneTypes || {});
+  if (!names.length) {
+    selectedSceneTypeName = "";
+    return "";
+  }
+  if (!selectedSceneTypeName || !names.includes(selectedSceneTypeName)) {
+    selectedSceneTypeName = names[0];
+  }
+  return selectedSceneTypeName;
+}
+
 function renderSceneTypeEditor() {
-  $("sceneTypeEditor").innerHTML = Object.entries(draft.scene_types || {}).map(([name, cfg], index) =>
+  const sceneTypes = draft.scene_types || {};
+  const name = selectedSceneType(sceneTypes);
+  $("sceneTypeSelector").innerHTML = sceneTypeSelectorHtml(sceneTypes, name);
+  $("sceneTypesJson").value = pretty(sceneTypes);
+  if (!name) {
+    $("sceneTypeEditor").innerHTML = '<div class="muted">No scene types defined.</div>';
+    return;
+  }
+  const cfg = sceneTypes[name] || {};
+  $("sceneTypeEditor").innerHTML =
     `<article class="editor-block compact" data-scene-type="${escapeHtml(name)}">
       <div class="block-title">
         <h3>${escapeHtml(name)}</h3>
@@ -477,15 +510,14 @@ function renderSceneTypeEditor() {
       </div>
       <div class="grid type-grid">
         <label>Type Key<input data-scene-type-field="name" value="${escapeHtml(name)}"></label>
-        <label>Rounds<input type="number" min="1" data-scene-type-field="rounds" value="${escapeHtml(cfg.rounds || 1)}"></label>
+        <label>Default Rounds<input type="number" min="1" data-scene-type-field="rounds" value="${escapeHtml(cfg.rounds || 1)}"></label>
       </div>
       <label>Call to Action<textarea data-scene-type-field="call_to_action">${escapeHtml(cfg.call_to_action || "")}</textarea></label>
       <details>
         <summary>Exact scene type JSON</summary>
-        <textarea class="json-box" id="sceneTypeRaw${index}">${escapeHtml(pretty(cfg))}</textarea>
+        <textarea class="json-box" id="sceneTypeRaw">${escapeHtml(pretty(cfg))}</textarea>
       </details>
-    </article>`
-  ).join("");
+    </article>`;
 }
 
 function clampSelectedSceneIndex(scenes = draft?.scenes || []) {
@@ -523,7 +555,9 @@ function sceneEditorHtml(scene, index, names) {
       <label>Type<select data-scene-field="type">${sceneTypeOptions(scene.type)}</select></label>
       <label>Rounds Override<input type="number" min="" data-scene-field="num_rounds" value="${escapeHtml(scene.num_rounds || "")}" placeholder="type default"></label>
     </div>
+    <div class="muted">Leave rounds blank to use the selected scene type's default rounds.</div>
     <div class="field-label">Participants</div>
+    <div class="muted">Saved on this scene as <code>scene.participants</code>.</div>
     <div class="checkbox-row">${participantChecks}</div>
     ${premiseFields}
     <details>
@@ -533,7 +567,7 @@ function sceneEditorHtml(scene, index, names) {
   </article>`;
 }
 
-function renderSceneEditor() {
+function renderShowFlow() {
   const names = selectedNames();
   const scenes = draft.scenes || [];
   const selectedIndex = clampSelectedSceneIndex(scenes);
@@ -543,14 +577,12 @@ function renderSceneEditor() {
     : '<div class="muted">No scenes loaded.</div>';
 }
 
-function renderScenesTab() {
+function renderShowFlowTab() {
   $("sceneDefaultsMainGameMaster").value = draft.scene_defaults?.main_game_master_name || "Show Runner";
   $("sceneDefaultsPremise").value = draft.scene_defaults?.default_premise || "";
-  renderSceneTypeEditor();
-  renderSceneEditor();
+  renderShowFlow();
   $("scenesJson").value = pretty({
     scene_defaults: draft.scene_defaults,
-    scene_types: draft.scene_types,
     scenes: draft.scenes,
   });
 }
@@ -560,7 +592,8 @@ function hydrateInputs() {
   $("sourceRoot").textContent = source.starter_root;
   renderConfigTab();
   renderCandidatesTab();
-  renderScenesTab();
+  renderShowFlowTab();
+  renderSceneTypeEditor();
   renderHelpTab();
   $("snapshotJson").value = pretty(draft);
 }
@@ -632,21 +665,27 @@ function applyCandidateFormBlocks(contestants, blocks, rawCandidateForIndex) {
 }
 
 function collectSceneTypeForms() {
-  const entries = [...document.querySelectorAll("[data-scene-type]")];
-  if (!entries.length) return;
-  const next = {};
-  entries.forEach((block, index) => {
-    const oldName = block.dataset.sceneType;
-    const raw = parseJsonField(`sceneTypeRaw${index}`, draft.scene_types[oldName] || {});
-    const name = block.querySelector('[data-scene-type-field="name"]').value.trim();
-    if (!name) return;
-    next[name] = {
-      ...raw,
-      rounds: Number(block.querySelector('[data-scene-type-field="rounds"]').value || 1),
-      call_to_action: block.querySelector('[data-scene-type-field="call_to_action"]').value,
-    };
-  });
+  if (activeTab !== "sceneEditor") return;
+  const block = document.querySelector("[data-scene-type]");
+  if (!block) return;
+  const oldName = block.dataset.sceneType;
+  const raw = parseJsonField("sceneTypeRaw", draft.scene_types?.[oldName] || {});
+  const name = block.querySelector('[data-scene-type-field="name"]').value.trim();
+  if (!name) return;
+  const next = {...(draft.scene_types || {})};
+  delete next[oldName];
+  next[name] = {
+    ...raw,
+    rounds: Number(block.querySelector('[data-scene-type-field="rounds"]').value || 1),
+    call_to_action: block.querySelector('[data-scene-type-field="call_to_action"]').value,
+  };
+  if (oldName !== name) {
+    draft.scenes = (draft.scenes || []).map((scene) =>
+      scene.type === oldName ? {...scene, type: name} : scene
+    );
+  }
   draft.scene_types = next;
+  selectedSceneTypeName = name;
 }
 
 function collectSceneForms() {
@@ -687,7 +726,7 @@ function applySceneFormBlocks(scenes, blocks, rawSceneForIndex) {
 }
 
 function collectScenesForms() {
-  if (activeTab !== "scenes") {
+  if (activeTab !== "showFlow") {
     return;
   }
   draft.scene_defaults = {
@@ -700,11 +739,12 @@ function collectScenesForms() {
 }
 
 function collectDraft() {
-  if (activeTab === "snapshot") {
+  if (activeTab === "logs" && activeLogsSubTab === "snapshot") {
     draft = JSON.parse($("snapshotJson").value);
   } else {
     collectConfigForm();
     collectCandidateForms();
+    collectSceneTypeForms();
     collectScenesForms();
   }
   draft.name = $("draftName").value;
@@ -822,6 +862,7 @@ function renderRecentRuns(runs) {
         <button class="secondary small" data-log-run="${escapeHtml(id)}" type="button">Log</button>
         <button class="secondary small" data-compare-left="${escapeHtml(id)}" type="button">Left</button>
         <button class="secondary small" data-compare-right="${escapeHtml(id)}" type="button">Right</button>
+        <button class="secondary small" data-delete-run="${escapeHtml(id)}" type="button">Delete</button>
         ${html ? `<a href="/artifacts/${escapeHtml(html)}" target="_blank">html</a>` : ""}
         ${json ? `<a href="/artifacts/${escapeHtml(json)}" target="_blank">json</a>` : ""}
         ${cfg ? `<a href="/artifacts/${escapeHtml(cfg)}" target="_blank">config</a>` : ""}
@@ -917,6 +958,25 @@ async function loadLog(runId) {
   if (!runId) throw new Error("Choose a run.");
   logsState = await api(`/api/logs/${encodeURIComponent(runId)}`);
   renderLogBrowser();
+}
+
+async function deleteRun(runId) {
+  if (!runId) throw new Error("Choose a run to delete.");
+  await api(`/api/runs/${encodeURIComponent(runId)}`, {method: "DELETE"});
+  if (inspectorState?.run_id === runId) inspectorState = null;
+  if (compareState?.left?.run_id === runId || compareState?.right?.run_id === runId) compareState = null;
+  if (logsState?.run_id === runId) logsState = null;
+  if (cleanDialogueState?.run_id === runId) cleanDialogueState = null;
+  await refreshStatus();
+  renderLogBrowser();
+  renderCleanDialogue();
+  if (inspectorState) renderInspector();
+  else {
+    $("inspectorRunId").textContent = "";
+    $("turnInspector").innerHTML = "";
+  }
+  if (compareState) renderCompare();
+  else $("compareOutput").innerHTML = "";
 }
 
 async function loadCleanDialogue(runId) {
@@ -1276,6 +1336,8 @@ if (typeof document !== "undefined") {
     if (target.id === "draftName") return true;
     if (target.id === "candidateSelect") return false;
     if (target.id === "sceneSelect") return false;
+    if (target.id === "sceneTypeSelect") return false;
+    if (target.id === "snapshotJson") return true;
     const panel = target.closest("[data-tab-panel]");
     return Boolean(panel && !["logs", "dialogue"].includes(panel.dataset.tabPanel));
   };
@@ -1317,7 +1379,19 @@ if (typeof document !== "undefined") {
     try {
       collectScenesForms();
       selectedSceneIndex = Number(event.target.value);
-      renderScenesTab();
+      renderShowFlowTab();
+      refreshDirtyState();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("sceneTypeSelector").addEventListener("change", (event) => {
+    if (event.target.id !== "sceneTypeSelect") return;
+    try {
+      collectSceneTypeForms();
+      selectedSceneTypeName = event.target.value;
+      renderSceneTypeEditor();
       refreshDirtyState();
     } catch (error) {
       setMessage(error.message, true);
@@ -1336,6 +1410,24 @@ if (typeof document !== "undefined") {
           panel.style.display = panel.dataset.tabPanel === activeTab ? "" : "none";
         });
         hydrateInputs();
+        setMessage("");
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-logs-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      try {
+        collectDraft();
+        activeLogsSubTab = button.dataset.logsTab;
+        document.querySelectorAll("[data-logs-tab]").forEach((b) => b.classList.remove("active"));
+        button.classList.add("active");
+        document.querySelectorAll("[data-logs-panel]").forEach((panel) => {
+          panel.style.display = panel.dataset.logsPanel === activeLogsSubTab ? "" : "none";
+        });
+        $("snapshotJson").value = pretty(draft);
         setMessage("");
       } catch (error) {
         setMessage(error.message, true);
@@ -1438,11 +1530,22 @@ if (typeof document !== "undefined") {
     try {
       const raw = JSON.parse($("scenesJson").value);
       draft.scene_defaults = raw.scene_defaults;
-      draft.scene_types = raw.scene_types;
       draft.scenes = raw.scenes;
       hydrateInputs();
       markDirty();
-      setMessage("Scenes JSON applied.");
+      setMessage("Show flow JSON applied.");
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("applySceneTypesJson").addEventListener("click", () => {
+    try {
+      draft.scene_types = JSON.parse($("sceneTypesJson").value);
+      selectedSceneTypeName = selectedSceneType(draft.scene_types || {});
+      hydrateInputs();
+      markDirty();
+      setMessage("Scene types JSON applied.");
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -1451,10 +1554,12 @@ if (typeof document !== "undefined") {
   $("addSceneType").addEventListener("click", () => {
     try {
       collectDraft();
+      draft.scene_types = draft.scene_types || {};
       let index = Object.keys(draft.scene_types || {}).length + 1;
       let name = `scene_type_${index}`;
       while (draft.scene_types[name]) name = `scene_type_${++index}`;
       draft.scene_types[name] = {rounds: 1, call_to_action: ""};
+      selectedSceneTypeName = name;
       hydrateInputs();
       markDirty();
     } catch (error) {
@@ -1466,6 +1571,7 @@ if (typeof document !== "undefined") {
     try {
       collectDraft();
       const names = selectedNames();
+      draft.scenes = draft.scenes || [];
       const type = Object.keys(draft.scene_types || {})[0] || "pod_date";
       draft.scenes.push({
         id: `scene_${draft.scenes.length + 1}`,
@@ -1571,6 +1677,15 @@ if (typeof document !== "undefined") {
       $("compareRight").value = compareRight.dataset.compareRight;
       return;
     }
+    const deleteRunButton = event.target.closest("[data-delete-run]");
+    if (deleteRunButton) {
+      const runId = deleteRunButton.dataset.deleteRun;
+      if (!window.confirm(`Delete saved artifacts for run ${runId}?`)) return;
+      deleteRun(runId)
+        .then(() => setMessage(`Deleted run ${runId}.`))
+        .catch((error) => setMessage(error.message, true));
+      return;
+    }
     const removeType = event.target.closest("[data-remove-type]");
     const removeScene = event.target.closest("[data-remove-scene]");
     if (!removeType && !removeScene) return;
@@ -1578,7 +1693,10 @@ if (typeof document !== "undefined") {
       const label = removeType ? "scene type" : "scene";
       if (!window.confirm(`Remove this ${label} from the browser draft?`)) return;
       collectDraft();
-      if (removeType) delete draft.scene_types[removeType.dataset.removeType];
+      if (removeType) {
+        delete draft.scene_types[removeType.dataset.removeType];
+        selectedSceneTypeName = selectedSceneType(draft.scene_types || {});
+      }
       if (removeScene) draft.scenes.splice(Number(removeScene.dataset.removeScene), 1);
       hydrateInputs();
       markDirty();
@@ -1705,6 +1823,7 @@ if (typeof module !== "undefined") {
     entityPrefabOptionsHtml,
     sceneEditorHtml,
     sceneSelectorHtml,
+    sceneTypeSelectorHtml,
     logSearchText,
     runContextLabel,
     summarizeDraftContext,

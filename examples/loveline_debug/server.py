@@ -100,6 +100,17 @@ class LovelineDebugApp:
         except Exception as exc:  # pylint: disable=broad-exception-caught
           self._send_json({"error": str(exc)}, status=500)
 
+      def do_DELETE(self) -> None:  # pylint: disable=invalid-name
+        parsed = parse.urlparse(self.path)
+        try:
+          if parsed.path.startswith("/api/runs/"):
+            run_id = parse.unquote(parsed.path.removeprefix("/api/runs/"))
+            self._send_json(app.runs.delete_run(run_id))
+          else:
+            self.send_error(404)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+          self._send_json({"error": str(exc)}, status=500)
+
       def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
