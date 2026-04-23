@@ -58,7 +58,9 @@ function testSavedDraftPickerLivesInHeader() {
 
   assert.match(header, /<select id="loadDraft">/);
   assert.match(header, /id="createDraft"/);
+  assert.match(header, /id="saveDraft"/);
   assert.doesNotMatch(header, /id="loadDraftBtn"/);
+  assert.doesNotMatch(header, /id="draftName"/);
   assert.doesNotMatch(firstSection, /<select id="loadDraft">/);
   assert.match(firstSection, /id="showFlowSummary"/);
   assert.match(firstSection, /Start Run From Current Draft/);

@@ -671,7 +671,6 @@ function renderShowFlowTab() {
 }
 
 function hydrateInputs() {
-  $("draftName").value = draft.name || "two_candidate_debug";
   if ($("sourceRoot")) $("sourceRoot").textContent = source.starter_root;
   renderConfigTab();
   renderCandidatesTab();
@@ -826,8 +825,12 @@ function collectDraft() {
   collectCandidateForms();
   collectSceneTypeForms();
   collectScenesForms();
-  draft.name = $("draftName").value;
+  draft.name = draftSaveName(draft);
   return draft;
+}
+
+function draftSaveName(value = draft, loadedName = selectedLoadedDraftName) {
+  return value?.name || loadedName || "two_candidate_debug";
 }
 
 function populateChrome() {
@@ -1512,7 +1515,6 @@ async function init() {
 
 if (typeof document !== "undefined") {
   const isDraftChangeTarget = (target) => {
-    if (target.id === "draftName") return true;
     if (target.id === "candidateSelect") return false;
     if (target.id === "sceneSelect") return false;
     if (target.id === "sceneTypeSelect") return false;
@@ -1629,10 +1631,11 @@ if (typeof document !== "undefined") {
 
   $("saveDraft").addEventListener("click", async () => {
     try {
-      const savedName = $("draftName").value;
+      const currentDraft = collectDraft();
+      const savedName = draftSaveName(currentDraft);
       const payload = await api("/api/draft", {
         method: "POST",
-        body: JSON.stringify({name: savedName, draft: collectDraft()}),
+        body: JSON.stringify({name: savedName, draft: currentDraft}),
       });
       selectedLoadedDraftName = savedName;
       await refreshSourceCandidates();
@@ -1978,6 +1981,7 @@ if (typeof document !== "undefined") {
 if (typeof module !== "undefined") {
   module.exports = {
     displayValue,
+    draftSaveName,
     loadSavedDraftByName,
     mergeSelectionDraft,
     remapSceneForSelection,

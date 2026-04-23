@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const {
+  draftSaveName,
   loadSavedDraftByName,
 } = require("./app.js");
 
@@ -71,12 +72,22 @@ function testSavedDraftHeaderHasNoSeparateLoadButton() {
 
   assert.match(header, /<select id="loadDraft">/);
   assert.match(header, /id="createDraft"/);
+  assert.match(header, /id="saveDraft"/);
   assert.doesNotMatch(header, /id="loadDraftBtn"/);
+  assert.doesNotMatch(header, /id="draftName"/);
+  assert.doesNotMatch(header, /<input[^>]+aria-label="Draft name"/);
+}
+
+function testSaveNameComesFromDraftState() {
+  assert.equal(draftSaveName({name: "date night"}), "date night");
+  assert.equal(draftSaveName({}, "loaded draft"), "loaded draft");
+  assert.equal(draftSaveName({}, ""), "two_candidate_debug");
 }
 
 (async () => {
   await testSavedDraftSelectorLoadsChosenDraft();
   await testSavedDraftSelectorHonorsDiscardCancellation();
   testSavedDraftHeaderHasNoSeparateLoadButton();
+  testSaveNameComesFromDraftState();
   console.log("app_saved_draft_selector_test passed");
 })();
