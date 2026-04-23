@@ -108,8 +108,8 @@ function testProgressSummaryUsesConfiguredShowFlowHonestly() {
   const html = elements.get("progressSummary").innerHTML;
   assert.match(html, /Processing active run/);
   assert.match(html, /Engine step 2 of 8/);
-  assert.match(html, /2 configured scenes, 3 configured rounds/);
-  assert.match(html, /Exact active scene\/round is not emitted/);
+  assert.doesNotMatch(html, /2 configured scenes, 3 configured rounds/);
+  assert.doesNotMatch(html, /Exact active scene\/round is not emitted/);
 }
 
 testRecentRunActionsMoveIntoDialogueWorkflow();

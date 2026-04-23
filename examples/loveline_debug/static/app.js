@@ -908,19 +908,10 @@ function renderProgressSummary(payload) {
   const currentStep = Number(payload.control?.current_step ?? active.current_step ?? 0);
   const percent = maxSteps ? Math.min(100, Math.round((currentStep / maxSteps) * 100)) : 0;
   const running = ["starting", "running"].includes(active.status);
-  const scenes = context.scene_count ?? flow.length;
-  const rounds = context.total_configured_rounds || "";
-  const firstPending = flow[Math.min(Math.max(currentStep - 1, 0), Math.max(flow.length - 1, 0))];
-  const sceneText = scenes
-    ? `${scenes} configured scene${Number(scenes) === 1 ? "" : "s"}${rounds ? `, ${rounds} configured round${Number(rounds) === 1 ? "" : "s"}` : ""}`
-    : "No configured scene outline";
-  const marker = firstPending
-    ? `Configured outline includes ${firstPending.id || "next scene"}${firstPending.rounds ? ` (${firstPending.rounds} round${Number(firstPending.rounds) === 1 ? "" : "s"})` : ""}.`
-    : "No scene marker is available.";
   element.innerHTML = `
     ${running ? '<div class="live-indicator"><span class="spinner" aria-hidden="true"></span><span>Processing active run</span></div>' : ""}
     <div class="progress-bar" aria-label="Run step progress" style="--progress-width:${escapeHtml(percent)}%"><span></span></div>
-    <div class="muted">${escapeHtml(`Engine step ${currentStep}${maxSteps ? ` of ${maxSteps}` : ""}. ${sceneText}. ${marker} Exact active scene/round is not emitted in live status.`)}</div>`;
+    <div class="muted">${escapeHtml(`Engine step ${currentStep}${maxSteps ? ` of ${maxSteps}` : ""}`)}</div>`;
 }
 
 function updateControlButtons(payload = latestStatus) {
