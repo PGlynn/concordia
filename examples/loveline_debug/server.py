@@ -40,6 +40,8 @@ class LovelineDebugApp:
             self._serve_file(STATIC_DIR / parsed.path.removeprefix("/static/"))
           elif parsed.path == "/api/source":
             self._send_json(config_io.list_source_data(app.paths))
+          elif parsed.path == "/api/contestants":
+            self._send_json(config_io.list_candidates(app.paths))
           elif parsed.path == "/api/draft/default":
             self._send_json(config_io.make_default_draft(app.paths))
           elif parsed.path == "/api/draft/selection":
@@ -76,6 +78,16 @@ class LovelineDebugApp:
                 payload["draft"], payload.get("name"), app.paths
             )
             self._send_json({"status": "ok", "path": str(path)})
+          elif self.path == "/api/contestant":
+            payload = self._read_json()
+            self._send_json(
+                config_io.save_contestant(payload["contestant"], app.paths)
+            )
+          elif self.path == "/api/contestant/new":
+            payload = self._read_json()
+            self._send_json(
+                config_io.create_contestant(payload["contestant"], app.paths)
+            )
           elif self.path == "/api/run":
             payload = self._read_json()
             record = app.runs.start_run(payload["draft"])

@@ -95,6 +95,13 @@ Saved drafts are:
 generated/loveline_debug/drafts/<draft_name>.json
 ```
 
+Shared contestant edits are stored once and hydrated into any draft that selects
+the contestant id:
+
+```text
+generated/loveline_debug/contestants.json
+```
+
 ## Next Extension Points
 
 - Inspect: embed `visual_interface` output and checkpoint component state in the

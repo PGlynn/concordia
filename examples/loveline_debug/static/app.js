@@ -325,6 +325,32 @@ function selectedNames() {
   return (draft?.contestants || []).map((item) => item.name).filter(Boolean);
 }
 
+function upsertSourceCandidate(candidate) {
+  if (!source) return;
+  const candidates = source.candidates || [];
+  const index = candidates.findIndex((item) => item.id === candidate.id);
+  if (index >= 0) candidates[index] = candidate;
+  else candidates.push(candidate);
+  source.candidates = candidates;
+}
+
+function replaceSelectedCandidate(candidate) {
+  const contestants = draft.contestants || [];
+  const index = clampSelectedCandidateIndex(contestants);
+  const previous = contestants[index] || {};
+  const nextContestants = [...contestants];
+  nextContestants[index] = candidate;
+  draft.contestants = nextContestants;
+  draft.selected_candidate_ids = nextContestants.map((item) => item.id).filter(Boolean);
+  if (previous.name && candidate.name && previous.name !== candidate.name) {
+    const nameMap = new Map([[previous.name, candidate.name]]);
+    const selectedNamesSet = new Set(selectedNames());
+    draft.scenes = (draft.scenes || []).map((scene) =>
+      remapSceneForSelection(scene, nameMap, selectedNamesSet)
+    );
+  }
+}
+
 function renderCandidateOptions(selectId, gender) {
   const selected = new Set(draft.selected_candidate_ids || []);
   const candidates = source.candidates.filter((item) => item.gender === gender);
@@ -408,7 +434,7 @@ function candidateEditorHtml(candidate, index) {
   return `<article class="editor-block" data-candidate-index="${index}">
       <div class="block-title">
         <h3>${escapeHtml(candidate.name || `Candidate ${index + 1}`)}</h3>
-        <span class="pill">${escapeHtml(candidate.gender || "candidate")}</span>
+        <span class="pill">${escapeHtml(candidate.gender || "candidate")} | shared id: ${escapeHtml(candidate.id || "")}</span>
       </div>
       <div class="grid two">
         <label>Name<input data-candidate-field="name" value="${escapeHtml(candidate.name)}"></label>
@@ -570,6 +596,7 @@ function collectCandidateForms() {
     blocks,
     (index) => parseJsonField(`candidateRaw${index}`, draft.contestants[index] || {}),
   );
+  draft.selected_candidate_ids = (draft.contestants || []).map((item) => item.id).filter(Boolean);
 }
 
 function applyCandidateFormBlocks(contestants, blocks, rawCandidateForIndex) {
@@ -1025,6 +1052,14 @@ function cleanDialogueContext(state = cleanDialogueState, status = latestStatus)
   return state?.summary || state?.run_context || run?.summary || run?.run_context || {};
 }
 
+function cleanDialogueStepLabel(entry, spokenIndex) {
+  const step = entry?.step;
+  const spoken = `Spoken turn ${spokenIndex + 1}`;
+  return step === undefined || step === null || step === ""
+    ? spoken
+    : `${spoken} | engine step ${step}`;
+}
+
 function renderCleanDialogue(state = cleanDialogueState) {
   if (!state) {
     $("cleanDialogueContext").innerHTML = "";
@@ -1055,7 +1090,11 @@ function renderCleanDialogue(state = cleanDialogueState) {
     $("cleanDialogueView").innerHTML = '<div class="muted">No candidate dialogue entries found in this run.</div>';
     return;
   }
-  $("cleanDialogueView").innerHTML = `<div class="dialogue-list">${entries.map((entry) => {
+  const firstStep = entries[0]?.step;
+  const stepNote = Number(firstStep) > 1
+    ? `<div class="muted">First spoken turn is engine step ${escapeHtml(firstStep)} because earlier engine steps contain setup or non-dialogue records.</div>`
+    : "";
+  $("cleanDialogueView").innerHTML = `${stepNote}<div class="dialogue-list">${entries.map((entry, index) => {
     const text = cleanDialogueText(entry);
     const raw = entry.raw_utterance_text && entry.raw_utterance_text !== text
       ? `<div class="muted">Raw: ${escapeHtml(entry.raw_utterance_text)}</div>`
@@ -1063,7 +1102,7 @@ function renderCleanDialogue(state = cleanDialogueState) {
     return `<article class="dialogue-turn">
       <div class="dialogue-turn-header">
         <span class="dialogue-speaker">${escapeHtml(entry.entity_name || "Candidate")}</span>
-        <span>Step ${escapeHtml(entry.step ?? "")}</span>
+        <span>${escapeHtml(cleanDialogueStepLabel(entry, index))}</span>
       </div>
       <div class="dialogue-text">${escapeHtml(text)}</div>
       ${raw}
@@ -1161,6 +1200,10 @@ async function loadSourceSelection(ids, message) {
   hydrateInputs();
   markClean();
   setMessage(message);
+}
+
+async function refreshSourceCandidates() {
+  source.candidates = await api("/api/contestants");
 }
 
 async function resetToDefaultSourceDraft() {
@@ -1321,6 +1364,7 @@ if (typeof document !== "undefined") {
         method: "POST",
         body: JSON.stringify({name: $("draftName").value, draft: collectDraft()}),
       });
+      await refreshSourceCandidates();
       await refreshDrafts();
       hydrateInputs();
       markClean();
@@ -1381,6 +1425,7 @@ if (typeof document !== "undefined") {
   $("applyContestantsJson").addEventListener("click", () => {
     try {
       draft.contestants = JSON.parse($("contestantsJson").value);
+      draft.selected_candidate_ids = (draft.contestants || []).map((item) => item.id).filter(Boolean);
       hydrateInputs();
       markDirty();
       setMessage("Candidates JSON applied.");
@@ -1430,6 +1475,53 @@ if (typeof document !== "undefined") {
       });
       hydrateInputs();
       markDirty();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("saveContestant").addEventListener("click", async () => {
+    try {
+      collectDraft();
+      const candidate = (draft.contestants || [])[clampSelectedCandidateIndex()];
+      if (!candidate) throw new Error("No contestant selected.");
+      const saved = await api("/api/contestant", {
+        method: "POST",
+        body: JSON.stringify({contestant: candidate}),
+      });
+      upsertSourceCandidate(saved);
+      replaceSelectedCandidate(saved);
+      hydrateInputs();
+      markDirty();
+      setMessage(`Saved shared contestant ${saved.name || saved.id}.`);
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  $("createContestant").addEventListener("click", async () => {
+    try {
+      collectDraft();
+      const current = (draft.contestants || [])[clampSelectedCandidateIndex()] || {};
+      const candidate = {
+        ...current,
+        name: `${current.name || "New Contestant"} Copy`,
+      };
+      if (candidate.entity_params) {
+        candidate.entity_params = {
+          ...candidate.entity_params,
+          name: candidate.name,
+        };
+      }
+      const created = await api("/api/contestant/new", {
+        method: "POST",
+        body: JSON.stringify({contestant: candidate}),
+      });
+      upsertSourceCandidate(created);
+      replaceSelectedCandidate(created);
+      hydrateInputs();
+      markDirty();
+      setMessage(`Created shared contestant ${created.name || created.id}.`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -1588,6 +1680,7 @@ if (typeof module !== "undefined") {
     renderCleanDialogue,
     stockFlowHelpHtml,
     cleanDialogueEntries,
+    cleanDialogueStepLabel,
     cleanDialogueText,
     cleanDialogueContext,
     renderLogBrowser,

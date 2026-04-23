@@ -5,6 +5,7 @@ const path = require("path");
 const {
   cleanDialogueContext,
   cleanDialogueEntries,
+  cleanDialogueStepLabel,
   cleanDialogueText,
   renderCleanDialogue,
 } = require("./app.js");
@@ -93,14 +94,32 @@ function testRenderCleanDialogueShowsContextAndConversation() {
   assert.match(elements.get("cleanDialogueContext").innerHTML, /run_1/);
   assert.match(elements.get("cleanDialogueContext").innerHTML, /Alex vs Blake/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /dialogue-turn/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /Spoken turn 1 \| engine step 1/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /Alex: I want the real thing/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /Raw: I want the real thing/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /That means a lot to hear/);
   assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /The date continues/);
 }
 
+function testCleanDialogueShowsEngineStepWhenFirstSpeechStartsAtStepTwo() {
+  const elements = installDom();
+  renderCleanDialogue({
+    ...state,
+    entries: [
+      {...state.entries[0], step: 2},
+      {...state.entries[1], step: 1},
+      {...state.entries[2], step: 3},
+    ],
+  });
+
+  assert.match(elements.get("cleanDialogueView").innerHTML, /First spoken turn is engine step 2/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /Spoken turn 1 \| engine step 2/);
+  assert.equal(cleanDialogueStepLabel({step: 2}, 0), "Spoken turn 1 | engine step 2");
+}
+
 testIndexExposesDialogueTabNextToConfig();
 testCleanDialogueFiltersCandidateDialogueOnly();
 testCleanDialogueContextPrefersStateSummary();
 testRenderCleanDialogueShowsContextAndConversation();
+testCleanDialogueShowsEngineStepWhenFirstSpeechStartsAtStepTwo();
 console.log("app_clean_dialogue_test passed");

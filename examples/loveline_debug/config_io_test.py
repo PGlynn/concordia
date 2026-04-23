@@ -112,6 +112,44 @@ class ConfigIoTest(absltest.TestCase):
         loaded["contestants"][0]["entity_params"],
     )
 
+  def test_saved_draft_stores_selected_ids_not_contestant_copies(self):
+    draft = config_io.make_default_draft()
+    draft["contestants"][0]["entity_params"]["observation_history_length"] = 41
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    path = config_io.save_draft(draft, "shared_candidate_draft", paths)
+    stored = config_io.load_json(path)
+    loaded = config_io.load_draft("shared_candidate_draft", paths)
+
+    self.assertNotIn("contestants", stored)
+    self.assertEqual(stored["selected_candidate_ids"], draft["selected_candidate_ids"])
+    self.assertEqual(
+        loaded["contestants"][0]["entity_params"]["observation_history_length"],
+        41,
+    )
+
+  def test_shared_contestant_update_hydrates_other_drafts(self):
+    draft = config_io.make_default_draft()
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    config_io.save_draft(draft, "first", paths)
+    config_io.save_draft({**draft, "name": "second"}, "second", paths)
+
+    contestant = dict(draft["contestants"][0])
+    contestant["name"] = "Edited Shared Alex"
+    contestant["entity_params"] = {
+        **contestant["entity_params"],
+        "name": "Edited Shared Alex",
+        "observation_history_length": 55,
+    }
+    config_io.save_contestant(contestant, paths)
+
+    loaded = config_io.load_draft("second", paths)
+    self.assertEqual(loaded["contestants"][0]["name"], "Edited Shared Alex")
+    self.assertEqual(
+        loaded["contestants"][0]["entity_params"]["observation_history_length"],
+        55,
+    )
+
   def test_component_toggles_persist_through_draft_json_and_config_params(self):
     draft = config_io.make_default_draft()
     draft["contestants"][0]["entity_params"][

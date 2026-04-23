@@ -66,6 +66,10 @@ class StarterPaths:
     return self.debug_root / "drafts"
 
   @property
+  def contestants_json(self) -> Path:
+    return self.debug_root / "contestants.json"
+
+  @property
   def runs_dir(self) -> Path:
     return self.debug_root / "runs"
 
@@ -95,6 +99,28 @@ def _candidate_gender(candidate: dict[str, Any]) -> str:
   return str(candidate.get("gender") or name or "")
 
 
+def _safe_id(value: str) -> str:
+  safe = _safe_name(value.strip().lower().replace(" ", "_"))
+  return safe or "contestant"
+
+
+def _apply_candidate_defaults(candidate: dict[str, Any]) -> dict[str, Any]:
+  candidate = copy.deepcopy(candidate)
+  entity_params = candidate.setdefault("entity_params", {})
+  if candidate.get("name"):
+    entity_params.setdefault("name", candidate["name"])
+  for key, value in BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS.items():
+    entity_params.setdefault(key, value)
+  component_cfg = entity_params.setdefault("stock_basic_entity_components", {})
+  if not isinstance(component_cfg, dict):
+    component_cfg = {}
+    entity_params["stock_basic_entity_components"] = component_cfg
+  for key, value in STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS.items():
+    component_cfg.setdefault(key, value)
+  candidate["gender"] = candidate.get("gender") or _candidate_gender(candidate)
+  return candidate
+
+
 def _source_candidates(paths: StarterPaths) -> list[dict[str, Any]]:
   personas = load_yaml(paths.personas_yaml)
   bundle = load_json(paths.persona_bundle_json)
@@ -102,27 +128,93 @@ def _source_candidates(paths: StarterPaths) -> list[dict[str, Any]]:
   result = []
   for persona in personas.get("contestants", []):
     candidate = copy.deepcopy(by_id[persona["id"]])
-    entity_params = candidate.setdefault("entity_params", {})
-    for key, value in BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS.items():
-      entity_params.setdefault(key, value)
-    component_cfg = entity_params.setdefault("stock_basic_entity_components", {})
-    if not isinstance(component_cfg, dict):
-      component_cfg = {}
-      entity_params["stock_basic_entity_components"] = component_cfg
-    for key, value in STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS.items():
-      component_cfg.setdefault(key, value)
     candidate["source_persona"] = persona
     candidate["gender"] = persona.get("gender", _candidate_gender(candidate))
     candidate["age"] = persona.get("age")
-    result.append(candidate)
+    result.append(_apply_candidate_defaults(candidate))
   return result
+
+
+def _saved_candidate_overrides(paths: StarterPaths) -> dict[str, dict[str, Any]]:
+  if not paths.contestants_json.exists():
+    return {}
+  payload = load_json(paths.contestants_json)
+  if isinstance(payload, list):
+    return {
+        item["id"]: item
+        for item in payload
+        if isinstance(item, dict) and item.get("id")
+    }
+  return {
+      candidate_id: item
+      for candidate_id, item in payload.items()
+      if isinstance(item, dict)
+  }
+
+
+def list_candidates(paths: StarterPaths = StarterPaths()) -> list[dict[str, Any]]:
+  """Returns the shared canonical contestant list used by every draft."""
+  try:
+    source_candidates = _source_candidates(paths)
+  except FileNotFoundError:
+    source_candidates = []
+  by_id = {item["id"]: item for item in source_candidates}
+  for candidate_id, saved in _saved_candidate_overrides(paths).items():
+    base = by_id.get(candidate_id, {})
+    merged = {**copy.deepcopy(base), **copy.deepcopy(saved), "id": candidate_id}
+    if base.get("entity_params") or saved.get("entity_params"):
+      merged["entity_params"] = {
+          **copy.deepcopy(base.get("entity_params") or {}),
+          **copy.deepcopy(saved.get("entity_params") or {}),
+      }
+    by_id[candidate_id] = _apply_candidate_defaults(merged)
+  return list(by_id.values())
+
+
+def save_contestant(
+    contestant: dict[str, Any],
+    paths: StarterPaths = StarterPaths(),
+) -> dict[str, Any]:
+  """Creates or updates one shared contestant record."""
+  candidate = _apply_candidate_defaults(contestant)
+  candidate_id = candidate.get("id") or _safe_id(candidate.get("name", "contestant"))
+  existing_ids = {item["id"] for item in list_candidates(paths)}
+  if candidate_id in existing_ids and candidate.get("id") != candidate_id:
+    suffix = 2
+    base_id = candidate_id
+    while candidate_id in existing_ids:
+      candidate_id = f"{base_id}_{suffix}"
+      suffix += 1
+  candidate["id"] = candidate_id
+  overrides = _saved_candidate_overrides(paths)
+  overrides[candidate_id] = candidate
+  write_json(paths.contestants_json, overrides)
+  return candidate
+
+
+def create_contestant(
+    contestant: dict[str, Any],
+    paths: StarterPaths = StarterPaths(),
+) -> dict[str, Any]:
+  candidate = copy.deepcopy(contestant)
+  candidate.pop("id", None)
+  name = candidate.get("name") or "New Contestant"
+  base_id = _safe_id(name)
+  existing_ids = {item["id"] for item in list_candidates(paths)}
+  candidate_id = base_id
+  suffix = 2
+  while candidate_id in existing_ids:
+    candidate_id = f"{base_id}_{suffix}"
+    suffix += 1
+  candidate["id"] = candidate_id
+  return save_contestant(candidate, paths)
 
 
 def list_source_data(paths: StarterPaths = StarterPaths()) -> dict[str, Any]:
   scenes = load_yaml(paths.scenes_yaml)
   return {
       "starter_root": str(paths.root),
-      "candidates": _source_candidates(paths),
+      "candidates": list_candidates(paths),
       "scene_defaults": scenes.get("defaults", {}),
       "scene_types": scenes.get("scene_types", {}),
       "scenes": scenes.get("scenes", []),
@@ -179,7 +271,40 @@ def make_draft_for_selection(
   }
 
 
+def hydrate_draft(
+    draft: dict[str, Any],
+    paths: StarterPaths | None = None,
+) -> dict[str, Any]:
+  """Attaches canonical contestants to a draft that stores selected ids."""
+  draft = copy.deepcopy(draft)
+  selected_ids = list(draft.get("selected_candidate_ids") or [])
+  if not selected_ids and draft.get("contestants"):
+    selected_ids = [item.get("id") for item in draft["contestants"] if item.get("id")]
+    draft["selected_candidate_ids"] = selected_ids
+  source_root = Path(draft.get("source_root", paths.root if paths else STARTER_ROOT))
+  candidate_paths = paths or StarterPaths(source_root)
+  by_id = {item["id"]: item for item in list_candidates(candidate_paths)}
+  legacy_by_id = {
+      item.get("id"): item
+      for item in draft.get("contestants", [])
+      if isinstance(item, dict) and item.get("id")
+  }
+  draft["contestants"] = [
+      copy.deepcopy(legacy_by_id.get(candidate_id) or by_id[candidate_id])
+      for candidate_id in selected_ids
+      if candidate_id in by_id or candidate_id in legacy_by_id
+  ]
+  return draft
+
+
+def normalized_draft_for_storage(draft: dict[str, Any]) -> dict[str, Any]:
+  stored = copy.deepcopy(draft)
+  stored.pop("contestants", None)
+  return stored
+
+
 def validate_draft(draft: dict[str, Any]) -> None:
+  draft = hydrate_draft(draft)
   contestants = draft.get("contestants", [])
   if len(contestants) != 2:
     raise DraftValidationError("Draft must contain exactly 2 candidates.")
@@ -202,9 +327,12 @@ def save_draft(
     name: str | None = None,
     paths: StarterPaths = StarterPaths(),
 ) -> Path:
+  for contestant in draft.get("contestants") or []:
+    save_contestant(contestant, paths)
+  draft = hydrate_draft(draft, paths)
   validate_draft(draft)
   clean_name = _safe_name(name or draft.get("name") or "draft")
-  draft = copy.deepcopy(draft)
+  draft = normalized_draft_for_storage(draft)
   draft["name"] = clean_name
   draft["updated_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
   path = paths.drafts_dir / f"{clean_name}.json"
@@ -225,13 +353,16 @@ def list_drafts(paths: StarterPaths = StarterPaths()) -> list[dict[str, Any]]:
         "name": path.stem,
         "path": str(path),
         "updated_at": payload.get("updated_at"),
-        "candidates": [item.get("name") for item in payload.get("contestants", [])],
+        "candidates": [
+            item.get("name")
+            for item in hydrate_draft(payload, paths).get("contestants", [])
+        ],
       })
   return drafts
 
 
 def load_draft(name: str, paths: StarterPaths = StarterPaths()) -> dict[str, Any]:
-  return load_json(paths.drafts_dir / f"{_safe_name(name)}.json")
+  return hydrate_draft(load_json(paths.drafts_dir / f"{_safe_name(name)}.json"), paths)
 
 
 def _safe_name(name: str) -> str:
@@ -277,6 +408,7 @@ def build_scene_specs(draft: dict[str, Any], gm_name: str) -> list[scene_lib.Sce
 
 
 def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
+  draft = hydrate_draft(draft)
   validate_draft(draft)
   contestants = draft["contestants"]
   player_names = [item["name"] for item in contestants]
@@ -347,7 +479,7 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
 
 
 def snapshot_for_run(draft: dict[str, Any], run_id: str) -> dict[str, Any]:
-  snapshot = copy.deepcopy(draft)
+  snapshot = hydrate_draft(draft)
   snapshot["run_id"] = run_id
   snapshot["snapshot_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
   validate_draft(snapshot)
