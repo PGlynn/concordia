@@ -13,6 +13,7 @@ _MAX_COMPONENTS = 12
 _MAX_MEMORIES = 24
 _MAX_GM_ENTRIES = 8
 _MAX_TRANSCRIPT_TURNS = 3
+_SCENE_TYPE_MEMORY_FILTER_WINDOW = 25
 _STOCK_KEY_QUESTION_COMPONENTS = (
     ("SituationPerception", "Situation Perception"),
     ("SelfPerception", "Self Perception"),
@@ -38,7 +39,12 @@ def load_run_inspector(run_dir: Path) -> dict[str, Any]:
   )
   interface = structured_logging.AIAgentLogInterface(log)
   entries = _inspectable_entries(log, interface)
-  selected = _selected_entry_payload(log, interface, entries[0]) if entries else None
+  snapshot = _read_json_file(run_dir / "config_snapshot.json")
+  selected = (
+      _selected_entry_payload(log, interface, entries[0], snapshot=snapshot)
+      if entries
+      else None
+  )
   return {
       "run_id": run_dir.name,
       "available": True,
@@ -65,12 +71,15 @@ def load_turn_inspector(
   selected = _match_entry(entries, step=step, entity=entity, index=index)
   if selected is None:
     raise ValueError(f"No inspectable entry found for step {step}.")
+  snapshot = _read_json_file(run_dir / "config_snapshot.json")
   return {
       "run_id": run_dir.name,
       "available": True,
       "overview": interface.get_overview(),
       "entries": entries,
-      "selected": _selected_entry_payload(log, interface, selected),
+      "selected": _selected_entry_payload(
+          log, interface, selected, snapshot=snapshot
+      ),
   }
 
 
@@ -219,6 +228,8 @@ def _selected_entry_payload(
     log: structured_logging.SimulationLog,
     interface: structured_logging.AIAgentLogInterface,
     selected: dict[str, Any],
+    *,
+    snapshot: dict[str, Any],
 ) -> dict[str, Any]:
   step = int(selected["step"])
   entity = selected["entity_name"]
@@ -238,6 +249,7 @@ def _selected_entry_payload(
       entity,
       context.get("action") or selected.get("action", ""),
   )
+  component_lookup = _component_value_lookup(raw_entry_data, context)
   stock_key_questions = _stock_key_question_outputs(raw_entry_data)
   return {
       "index": selected["index"],
@@ -248,6 +260,13 @@ def _selected_entry_payload(
       "summary": selected["summary"],
       "action": context.get("action") or selected.get("action", ""),
       **text_surfaces,
+      "active_inputs": _active_inputs_summary(
+          snapshot=snapshot,
+          step=step,
+          entity_name=entity,
+          component_lookup=component_lookup,
+          entity_memories=interface.get_entity_memories(entity),
+      ),
       "stock_key_questions": stock_key_questions,
       "action_prompt": action_prompt,
       "observations": observations,
@@ -265,6 +284,180 @@ def _selected_entry_payload(
           "data": raw_entry_data,
       },
   }
+
+
+def _component_value_lookup(
+    raw_entry_data: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+  values = {}
+  all_components = context.get("all_components", {})
+  if isinstance(all_components, dict):
+    values.update(all_components)
+  if isinstance(raw_entry_data, dict):
+    raw_components = raw_entry_data.get("value")
+    if isinstance(raw_components, dict):
+      for name, component_data in raw_components.items():
+        if not isinstance(component_data, dict):
+          continue
+        if "Value" in component_data:
+          values[name] = component_data["Value"]
+        elif "State" in component_data:
+          values[name] = component_data["State"]
+  return values
+
+
+def _active_inputs_summary(
+    *,
+    snapshot: dict[str, Any],
+    step: int,
+    entity_name: str,
+    component_lookup: dict[str, Any],
+    entity_memories: list[str],
+) -> dict[str, Any]:
+  contestant = _contestant_config(snapshot, entity_name)
+  active_scene = _active_scene_config(snapshot, step)
+  scene_type_cfg = active_scene.get("scene_type_config", {})
+  memory_override = str(scene_type_cfg.get("memory_override", "")).strip()
+  memory_filter = str(scene_type_cfg.get("memory_filter", "")).strip()
+  return {
+      "instructions": component_lookup.get("Instructions", ""),
+      "goal": component_lookup.get("Goal", ""),
+      "call_to_action": scene_type_cfg.get("call_to_action", ""),
+      "scene": {
+          "id": active_scene.get("id"),
+          "type": active_scene.get("type"),
+          "round": active_scene.get("round"),
+          "rounds": active_scene.get("rounds"),
+          "participants": active_scene.get("participants", []),
+      },
+      "scene_premise": _premise_for_entity(active_scene, entity_name),
+      "loaded_context": [
+          row
+          for row in (
+              _named_value_row(
+                  "Player-specific context",
+                  contestant.get("player_specific_context", ""),
+              ),
+              _named_value_row(
+                  "Scene-type context override",
+                  scene_type_cfg.get("context_override", ""),
+              ),
+          )
+          if row
+      ],
+      "loaded_memories": [
+          row
+          for row in (
+              _named_value_row(
+                  "Player-specific memories",
+                  contestant.get("player_specific_memories", []),
+              ),
+              _named_value_row(
+                  "Scene-type memory override",
+                  memory_override,
+              ),
+              _named_value_row(
+                  "Scene-type memory filter",
+                  _filtered_scene_type_memories(entity_memories, memory_filter),
+                  meta=memory_filter if memory_filter and not memory_override else "",
+              ),
+          )
+          if row
+      ],
+  }
+
+
+def _named_value_row(
+    label: str,
+    value: Any,
+    *,
+    meta: str = "",
+) -> dict[str, Any] | None:
+  if isinstance(value, str):
+    if not value.strip():
+      return None
+  elif isinstance(value, list):
+    if not value:
+      return None
+  elif value is None:
+    return None
+  row = {"label": label, "value": value}
+  if meta:
+    row["meta"] = meta
+  return row
+
+
+def _contestant_config(snapshot: dict[str, Any], entity_name: str) -> dict[str, Any]:
+  contestants = snapshot.get("contestants") or []
+  for contestant in contestants:
+    if contestant.get("name") == entity_name:
+      return contestant
+  return {}
+
+
+def _active_scene_config(snapshot: dict[str, Any], step: int) -> dict[str, Any]:
+  scenes = snapshot.get("scenes") or []
+  scene_types = snapshot.get("scene_types") or {}
+  round_index = max(step - 1, 0)
+  total_rounds = 0
+  for index, scene in enumerate(scenes):
+    scene_type_cfg = scene_types.get(scene.get("type"), {})
+    rounds = int(scene.get("num_rounds") or scene_type_cfg.get("rounds") or 1)
+    if round_index < total_rounds + rounds:
+      return {
+          "index": index,
+          "id": scene.get("id") or f"Scene {index + 1}",
+          "type": scene.get("type") or "",
+          "round": (round_index - total_rounds) + 1,
+          "rounds": rounds,
+          "participants": scene.get("participants") or [],
+          "premise": scene.get("premise") or {},
+          "scene_type_config": scene_type_cfg,
+      }
+    total_rounds += rounds
+  return {
+      "index": None,
+      "id": "",
+      "type": "",
+      "round": None,
+      "rounds": None,
+      "participants": [],
+      "premise": {},
+      "scene_type_config": {},
+  }
+
+
+def _premise_for_entity(scene: dict[str, Any], entity_name: str) -> list[str]:
+  premise = scene.get("premise") or {}
+  if not isinstance(premise, dict):
+    return []
+  value = premise.get(entity_name, [])
+  if isinstance(value, list):
+    return [str(item) for item in value if str(item).strip()]
+  if value:
+    return [str(value)]
+  return []
+
+
+def _filtered_scene_type_memories(
+    entity_memories: list[str],
+    memory_filter: str,
+) -> list[str] | str:
+  if not memory_filter.strip():
+    return []
+  filters = [
+      line.strip().lower()
+      for line in memory_filter.splitlines()
+      if line.strip()
+  ]
+  recent_memories = entity_memories[-_SCENE_TYPE_MEMORY_FILTER_WINDOW:]
+  matches = [
+      memory
+      for memory in recent_memories
+      if any(token in memory.lower() for token in filters)
+  ]
+  return matches or "No recent memories matched the active scene-type filter."
 
 
 def _stock_key_question_outputs(raw_entry_data: Any) -> list[dict[str, Any]]:

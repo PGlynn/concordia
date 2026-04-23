@@ -7,6 +7,7 @@ from urllib import request
 
 from absl.testing import absltest
 
+from concordia.utils import structured_logging
 from examples.loveline_debug import config_io
 from examples.loveline_debug import server
 
@@ -98,6 +99,100 @@ class ServerTest(absltest.TestCase):
 
     self.assertIn("async function refreshStatus()", body)
     self.assertEqual(cache_control, "no-store, max-age=0")
+
+  def test_inspect_api_surfaces_active_inputs_from_run_artifacts(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    run_dir = paths.runs_dir / "run_1"
+    run_dir.mkdir(parents=True)
+    log = structured_logging.SimulationLog()
+    log.add_entry(
+        step=1,
+        timestamp="2026-04-23T00:00:00+00:00",
+        entity_name="Alex",
+        component_name="entity_action",
+        entry_type="entity",
+        summary="Alex speaks",
+        raw_data={
+            "key": "Entity [Alex]",
+            "value": {
+                "Instructions": {
+                    "Key": "Instructions",
+                    "Value": "Stay in character as Alex.",
+                },
+                "Goal": {
+                    "Key": "Goal",
+                    "Value": "Find a serious match.",
+                },
+                "__act__": {
+                    "Summary": "Action: Alex speaks",
+                    "Value": "I am here for something real.",
+                },
+            },
+        },
+    )
+    log.attach_memories(
+        entity_memories={"Alex": ["Alex wants marriage."]},
+        game_master_memories=[],
+    )
+    (run_dir / "structured_log.json").write_text(log.to_json(), encoding="utf-8")
+    (run_dir / "config_snapshot.json").write_text(
+        json.dumps({
+            "contestants": [{
+                "name": "Alex",
+                "player_specific_context": "Alex ended a long engagement before joining the show.",
+                "player_specific_memories": ["Alex wants marriage."],
+            }],
+            "scene_types": {
+                "pod_date": {
+                    "rounds": 2,
+                    "call_to_action": "Answer Blake with warmth.",
+                    "context_override": "Keep the pod energy tentative and intimate.",
+                    "memory_filter": "marriage",
+                }
+            },
+            "scenes": [{
+                "id": "pod_1",
+                "type": "pod_date",
+                "participants": ["Alex", "Blake"],
+                "premise": {
+                    "Alex": ["Alex hears Blake through the wall for the first time."],
+                },
+            }],
+        }),
+        encoding="utf-8",
+    )
+    httpd, thread = self._start_server(paths)
+    try:
+      port = httpd.server_address[1]
+      url = f"http://127.0.0.1:{port}/api/inspect/run_1?step=1&entity=Alex"
+      with request.urlopen(url) as response:  # nosec: local test server
+        payload = json.loads(response.read().decode("utf-8"))
+    finally:
+      httpd.shutdown()
+      httpd.server_close()
+      thread.join()
+
+    selected = payload["selected"]
+    self.assertEqual(
+        selected["active_inputs"]["instructions"],
+        "Stay in character as Alex.",
+    )
+    self.assertEqual(
+        selected["active_inputs"]["call_to_action"],
+        "Answer Blake with warmth.",
+    )
+    self.assertEqual(
+        selected["active_inputs"]["scene_premise"],
+        ["Alex hears Blake through the wall for the first time."],
+    )
+    self.assertEqual(
+        selected["active_inputs"]["loaded_context"][0]["label"],
+        "Player-specific context",
+    )
+    self.assertEqual(
+        selected["active_inputs"]["loaded_memories"][1]["value"],
+        ["Alex wants marriage."],
+    )
 
 
 if __name__ == "__main__":

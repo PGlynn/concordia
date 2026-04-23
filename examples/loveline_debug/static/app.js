@@ -1409,6 +1409,36 @@ function renderGmEntries(entries) {
   ).join("")}</div>`;
 }
 
+function renderNamedValueRows(rows) {
+  if (!rows || !rows.length) return "";
+  return rows.map((row) => {
+    const meta = row.meta ? `<div class="muted">${escapeHtml(row.meta)}</div>` : "";
+    return `<details open><summary>${escapeHtml(row.label || "Value")}</summary>${meta}<pre>${escapeHtml(displayValue(row.value))}</pre></details>`;
+  }).join("");
+}
+
+function renderActiveInputs(activeInputs) {
+  if (!activeInputs) return "";
+  const scene = activeInputs.scene || {};
+  const sceneMeta = [
+    scene.id,
+    scene.type,
+    scene.round && scene.rounds ? `round ${scene.round} of ${scene.rounds}` : "",
+    (scene.participants || []).length ? `participants: ${(scene.participants || []).join(", ")}` : "",
+  ].filter(Boolean).join(" | ");
+  const sceneMetaBlock = sceneMeta ? `<div class="muted">${escapeHtml(sceneMeta)}</div>` : "";
+  const content = [
+    renderTextBlock("Instructions", activeInputs.instructions),
+    renderTextBlock("Goal", activeInputs.goal),
+    renderTextBlock("Call to Action", activeInputs.call_to_action),
+    renderListBlock("Scene Premise", activeInputs.scene_premise),
+    renderNamedValueRows(activeInputs.loaded_context),
+    renderNamedValueRows(activeInputs.loaded_memories),
+  ].filter(Boolean).join("");
+  if (!content) return "";
+  return `<div class="inspector-block"><h3>Active Inputs</h3>${sceneMetaBlock}${content}</div>`;
+}
+
 function renderTurnDetail(turn, state = inspectorState) {
   const meta = [
     ["Run", state?.run_id || ""],
@@ -1420,6 +1450,7 @@ function renderTurnDetail(turn, state = inspectorState) {
     `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
   ).join("")}</div>
   ${renderUtteranceTextSurfaces(turn)}
+  ${renderActiveInputs(turn.active_inputs)}
   ${renderStockKeyQuestions(turn.stock_key_questions)}
   ${renderTextBlock("Action Prompt", turn.action_prompt)}
   ${renderListBlock("Observations", turn.observations)}

@@ -11,6 +11,36 @@ function testRenderTurnDetailShowsDebugFields() {
       action: "I am here for something real.",
       raw_utterance_text: "I am here for something real.",
       concordia_event_text: "Alex: I am here for something real.",
+      active_inputs: {
+        instructions: "Stay in character as Alex.",
+        goal: "Find a serious match.",
+        call_to_action: "Answer Blake with warmth.",
+        scene: {
+          id: "pod_1",
+          type: "pod_date",
+          round: 1,
+          rounds: 2,
+          participants: ["Alex", "Blake"],
+        },
+        scene_premise: ["Alex hears Blake through the wall for the first time."],
+        loaded_context: [
+          {
+            label: "Player-specific context",
+            value: "Alex ended a long engagement before joining the show.",
+          },
+        ],
+        loaded_memories: [
+          {
+            label: "Player-specific memories",
+            value: ["Alex wants marriage.", "Alex hates performative flirting."],
+          },
+          {
+            label: "Scene-type memory filter",
+            meta: "marriage\npod",
+            value: ["Alex wants marriage."],
+          },
+        ],
+      },
       stock_key_questions: [
         {
           name: "SituationPerception",
@@ -47,6 +77,11 @@ function testRenderTurnDetailShowsDebugFields() {
   );
 
   assert.match(html, /Action Prompt/);
+  assert.match(html, /Active Inputs/);
+  assert.match(html, /Call to Action/);
+  assert.match(html, /Scene Premise/);
+  assert.match(html, /Player-specific context/);
+  assert.match(html, /Scene-type memory filter/);
   assert.match(html, /Stock Key-Question Outputs/);
   assert.match(html, /Situation Perception/);
   assert.match(html, /Alex is reflective and cautious/);

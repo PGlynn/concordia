@@ -24,6 +24,13 @@ class InspectorTest(unittest.TestCase):
         raw_data={
             "key": "Entity [Alex]",
             "value": {
+                "Instructions": {
+                    "Key": "Instructions",
+                    "Value": (
+                        "The instructions for how to play the role of Alex are "
+                        "as follows. Keep Alex grounded and realistic."
+                    ),
+                },
                 "Goal": {"Key": "Goal", "Value": "Find a serious match."},
                 "Situation": {"Key": "Situation", "Value": "Alex is in a pod."},
                 "SituationPerception": {
@@ -79,6 +86,35 @@ class InspectorTest(unittest.TestCase):
         game_master_memories=["The pod date started."],
     )
     (run_dir / "structured_log.json").write_text(log.to_json(), encoding="utf-8")
+    (run_dir / "config_snapshot.json").write_text(
+        json.dumps({
+            "contestants": [{
+                "name": "Alex",
+                "player_specific_context": "Alex entered the show after a long engagement ended.",
+                "player_specific_memories": [
+                    "Alex wants marriage.",
+                    "Alex hates performative flirting.",
+                ],
+            }],
+            "scene_types": {
+                "pod_date": {
+                    "rounds": 3,
+                    "call_to_action": "Answer the pod opener with honesty and warmth.",
+                    "context_override": "Keep the scene tentative and intimate.",
+                    "memory_filter": "marriage\npod",
+                }
+            },
+            "scenes": [{
+                "id": "pod_1",
+                "type": "pod_date",
+                "participants": ["Alex", "Blake"],
+                "premise": {
+                    "Alex": ["Alex is hearing Blake through the wall for the first time."],
+                },
+            }],
+        }),
+        encoding="utf-8",
+    )
 
     payload = inspector.load_run_inspector(run_dir)
 
@@ -115,6 +151,34 @@ class InspectorTest(unittest.TestCase):
         selected["game_master_entries"][0]["data"]["event_resolution"]["Value"],
         "Blake hears Alex's answer.",
     )
+    self.assertIn(
+        "The instructions for how to play the role of Alex are as follows.",
+        selected["active_inputs"]["instructions"],
+    )
+    self.assertEqual(
+        selected["active_inputs"]["goal"], "Find a serious match."
+    )
+    self.assertEqual(
+        selected["active_inputs"]["call_to_action"],
+        "Answer the pod opener with honesty and warmth.",
+    )
+    self.assertEqual(
+        selected["active_inputs"]["scene_premise"],
+        ["Alex is hearing Blake through the wall for the first time."],
+    )
+    self.assertEqual(
+        selected["active_inputs"]["loaded_context"][0]["value"],
+        "Alex entered the show after a long engagement ended.",
+    )
+    self.assertEqual(
+        selected["active_inputs"]["loaded_memories"][0]["value"],
+        ["Alex wants marriage.", "Alex hates performative flirting."],
+    )
+    self.assertEqual(
+        selected["active_inputs"]["loaded_memories"][1]["value"],
+        ["Alex wants marriage."],
+    )
+    self.assertEqual(selected["active_inputs"]["scene"]["round"], 3)
 
   def test_stock_key_question_outputs_read_state_from_real_log_shape(self):
     raw_entry_data = {
