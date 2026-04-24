@@ -37,6 +37,7 @@ class ConfigIoTest(absltest.TestCase):
     self.assertFalse(draft["run"]["disable_language_model"])
     self.assertEqual(draft["run"]["api_type"], "ollama")
     self.assertEqual(draft["run"]["model_name"], "qwen3.5:35b-a3b")
+    self.assertFalse(draft["run"]["skip_generated_formative_memories"])
 
   def test_default_draft_exposes_stock_basic_entity_history_lengths(self):
     draft = config_io.make_default_draft()
@@ -212,6 +213,26 @@ class ConfigIoTest(absltest.TestCase):
             "SelfPerception": True,
             "PersonBySituation": False,
         },
+    )
+
+  def test_skip_generated_formative_memories_persists_and_sets_initializer(self):
+    draft = config_io.make_default_draft()
+    draft["run"]["skip_generated_formative_memories"] = True
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    config_io.save_draft(draft, "skip_formative_memories", paths)
+    loaded = config_io.load_draft("skip_formative_memories", paths)
+    config = config_io.build_config(loaded)
+
+    self.assertTrue(loaded["run"]["skip_generated_formative_memories"])
+    initializer = next(
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.INITIALIZER
+    )
+    self.assertEqual(
+        initializer.params["skip_formative_memories_for"],
+        [item["name"] for item in loaded["contestants"]],
     )
 
   def test_scene_type_instructions_override_persists_through_draft_json(self):

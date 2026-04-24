@@ -146,6 +146,7 @@ class RunnerTest(absltest.TestCase):
             "model_name": "qwen3.5:35b-a3b",
             "start_paused": False,
             "checkpoint_every_step": False,
+            "skip_generated_formative_memories": True,
         },
     }
 
@@ -163,6 +164,7 @@ class RunnerTest(absltest.TestCase):
     self.assertTrue(summary["disable_language_model"])
     self.assertFalse(summary["start_paused"])
     self.assertFalse(summary["checkpoint_every_step"])
+    self.assertTrue(summary["skip_generated_formative_memories"])
 
   def test_model_builder_falls_back_to_local_ollama_when_lm_enabled(self):
     paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))

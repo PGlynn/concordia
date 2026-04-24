@@ -28,6 +28,7 @@ STARTER_ROOT = Path(
 DRAFT_SCHEMA_VERSION = 1
 DEFAULT_API_TYPE = "ollama"
 DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b"
+DEFAULT_SKIP_GENERATED_FORMATIVE_MEMORIES = False
 BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS = {
     "observation_history_length": 1_000_000,
     "situation_perception_history_length": 25,
@@ -269,6 +270,9 @@ def make_draft_for_selection(
           "api_key": None,
           "start_paused": True,
           "checkpoint_every_step": True,
+          "skip_generated_formative_memories": (
+              DEFAULT_SKIP_GENERATED_FORMATIVE_MEMORIES
+          ),
       },
   }
 
@@ -414,6 +418,7 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
   validate_draft(draft)
   contestants = draft["contestants"]
   player_names = [item["name"] for item in contestants]
+  run_settings = draft.get("run") or {}
   gm_name = draft["scene_defaults"].get("main_game_master_name", "Show Runner")
   scene_type_overrides = scene_type_instructions.scene_type_instruction_overrides(
       draft["scene_types"]
@@ -465,6 +470,11 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
                   item["name"]: item.get("player_specific_memories", [])
                   for item in contestants
               },
+              "skip_formative_memories_for": (
+                  player_names
+                  if run_settings.get("skip_generated_formative_memories", False)
+                  else []
+              ),
           },
       )
   )
@@ -503,7 +513,7 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
       },
       instances=instances,
       default_premise=draft["scene_defaults"]["default_premise"],
-      default_max_steps=int(draft["run"].get("max_steps") or 8),
+      default_max_steps=int(run_settings.get("max_steps") or 8),
   )
 
 

@@ -73,6 +73,7 @@ function summarizeDraftContext(value) {
     model_name: run.model_name,
     start_paused: run.start_paused !== false,
     checkpoint_every_step: run.checkpoint_every_step !== false,
+    skip_generated_formative_memories: Boolean(run.skip_generated_formative_memories),
     scene_count: (value?.scenes || []).length,
     source_root: value?.source_root,
   };
@@ -87,6 +88,7 @@ function runContextLabel(context) {
     lm,
     context?.start_paused === false ? "starts playing" : "starts paused",
     context?.checkpoint_every_step === false ? "no checkpoints" : "checkpoints",
+    context?.skip_generated_formative_memories ? "skip formative memories" : "",
   ].filter(Boolean).join(" | ");
 }
 
@@ -504,6 +506,9 @@ function renderConfigTab() {
   $("modelName").value = draft.run?.model_name || DEFAULT_MODEL_NAME;
   $("startPaused").checked = draft.run?.start_paused !== false;
   $("checkpointEveryStep").checked = draft.run?.checkpoint_every_step !== false;
+  $("skipGeneratedFormativeMemories").checked = Boolean(
+    draft.run?.skip_generated_formative_memories
+  );
   $("configRawJson").value = pretty({
     schema_version: draft.schema_version,
     name: draft.name,
@@ -791,6 +796,7 @@ function collectConfigForm() {
     model_name: $("modelName").value,
     start_paused: $("startPaused").checked,
     checkpoint_every_step: $("checkpointEveryStep").checked,
+    skip_generated_formative_memories: $("skipGeneratedFormativeMemories").checked,
   };
 }
 
@@ -2154,7 +2160,22 @@ if (typeof document !== "undefined") {
 }
 
 if (typeof module !== "undefined") {
+  function __setTestState(nextState = {}) {
+    if (Object.prototype.hasOwnProperty.call(nextState, "draft")) {
+      draft = nextState.draft;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextState, "source")) {
+      source = nextState.source;
+    }
+  }
+
+  function __getTestState() {
+    return {draft, source};
+  }
+
   module.exports = {
+    __getTestState,
+    __setTestState,
     displayValue,
     draftSaveName,
     loadSavedDraftByName,
@@ -2206,6 +2227,8 @@ if (typeof module !== "undefined") {
     runOptionLabel,
     formatRunTimestamp,
     logSearchText,
+    collectConfigForm,
+    renderConfigTab,
     runContextLabel,
     runOperationButtonState,
     startRunFromCurrentDraft,

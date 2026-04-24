@@ -416,6 +416,9 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
       "model": run.get("model_name"),
       "start_paused": run.get("start_paused", True) is not False,
       "checkpoint_every_step": run.get("checkpoint_every_step", True) is not False,
+      "skip_generated_formative_memories": bool(
+          run.get("skip_generated_formative_memories")
+      ),
   }
 
 
