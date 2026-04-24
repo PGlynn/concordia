@@ -10,6 +10,7 @@ from concordia.components.agent import memory as memory_component
 from concordia.components.game_master import instructions as instructions_component
 from concordia.components.game_master import scene_tracker
 from concordia.typing import entity as entity_lib
+from concordia.typing import logging as logging_lib
 
 
 def _active_scene_type_name(
@@ -26,7 +27,32 @@ def _active_scene_type_name(
     return None
 
 
-class _OptionalSceneTypeComponent(action_spec_ignored.ActionSpecIgnored):
+def _log_component(
+    component: action_spec_ignored.ActionSpecIgnored,
+    payload: Mapping[str, object],
+) -> None:
+  logging_channel = getattr(
+      component, "_logging_channel", logging_lib.NoOpLoggingChannel
+  )
+  logging_channel(payload)
+
+
+class _LocalLoggingInit:
+  """Adds a local no-op logging channel for live-editor override components."""
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self._logging_channel = logging_lib.NoOpLoggingChannel
+
+  def set_logging_channel(
+      self, logging_channel: logging_lib.LoggingChannel
+  ) -> None:
+    self._logging_channel = logging_channel
+
+
+class _OptionalSceneTypeComponent(
+    _LocalLoggingInit, action_spec_ignored.ActionSpecIgnored
+):
   """Omits itself from pre-act output when there is no active scene-type value."""
 
   @override
@@ -41,7 +67,9 @@ class _OptionalSceneTypeComponent(action_spec_ignored.ActionSpecIgnored):
     return f"{self.get_pre_act_label()}:\n{value}\n"
 
 
-class SceneTypeInstructionsOverride(action_spec_ignored.ActionSpecIgnored):
+class SceneTypeInstructionsOverride(
+    _LocalLoggingInit, action_spec_ignored.ActionSpecIgnored
+):
   """Uses stock GM instructions unless the active scene type has an override."""
 
   def __init__(
@@ -72,7 +100,7 @@ class SceneTypeInstructionsOverride(action_spec_ignored.ActionSpecIgnored):
     )
     override = self._overrides_by_scene_type.get(scene_type_name or "")
     value = override or self._default_instructions
-    self._logging_channel({
+    _log_component(self, {
         "Key": self.get_pre_act_label(),
         "Value": value,
         "Scene type": scene_type_name,
@@ -90,7 +118,9 @@ def scene_type_instruction_overrides(
   }
 
 
-class SceneTypeExamplesOverride(action_spec_ignored.ActionSpecIgnored):
+class SceneTypeExamplesOverride(
+    _LocalLoggingInit, action_spec_ignored.ActionSpecIgnored
+):
   """Uses stock workflow examples unless the active scene type overrides them."""
 
   def __init__(
@@ -119,7 +149,7 @@ class SceneTypeExamplesOverride(action_spec_ignored.ActionSpecIgnored):
     )
     override = self._overrides_by_scene_type.get(scene_type_name or "")
     value = override or self._default_examples
-    self._logging_channel({
+    _log_component(self, {
         "Key": self.get_pre_act_label(),
         "Value": value,
         "Scene type": scene_type_name,
@@ -161,7 +191,7 @@ class SceneTypeContextOverride(_OptionalSceneTypeComponent):
         self, self._scene_tracker_component_key
     )
     value = self._overrides_by_scene_type.get(scene_type_name or "", "")
-    self._logging_channel({
+    _log_component(self, {
         "Key": self.get_pre_act_label(),
         "Value": value,
         "Scene type": scene_type_name,
@@ -216,7 +246,7 @@ class SceneTypeMemoryOverrideOrFilter(_OptionalSceneTypeComponent):
     )
     override = self._overrides_by_scene_type.get(scene_type_name or "", "")
     if override:
-      self._logging_channel({
+      _log_component(self, {
           "Key": self.get_pre_act_label(),
           "Value": override,
           "Scene type": scene_type_name,
@@ -226,7 +256,7 @@ class SceneTypeMemoryOverrideOrFilter(_OptionalSceneTypeComponent):
 
     filter_text = self._filters_by_scene_type.get(scene_type_name or "", "")
     if not filter_text:
-      self._logging_channel({
+      _log_component(self, {
           "Key": self.get_pre_act_label(),
           "Value": "",
           "Scene type": scene_type_name,
@@ -253,7 +283,7 @@ class SceneTypeMemoryOverrideOrFilter(_OptionalSceneTypeComponent):
         if matches
         else "No recent memories matched the active scene-type filter."
     )
-    self._logging_channel({
+    _log_component(self, {
         "Key": self.get_pre_act_label(),
         "Value": value,
         "Scene type": scene_type_name,

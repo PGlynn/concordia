@@ -1,6 +1,7 @@
 """Tests for Loveline-local scene-type instruction overrides."""
 
 from absl.testing import absltest
+from unittest import mock
 
 from concordia.components.agent import memory as memory_component
 from concordia.components.game_master import instructions as instructions_component
@@ -87,6 +88,17 @@ class SceneTypeInstructionsTest(absltest.TestCase):
         "Keep this scene breezy and a little teasing.",
     )
 
+  def test_instructions_pre_act_runs_without_logging_channel_init(self):
+    component = scene_type_instructions.SceneTypeInstructionsOverride({
+        "pod_date": "Keep this scene breezy and a little teasing.",
+    })
+    component.set_entity(_FakeEntity("pod_date"))
+
+    self.assertEqual(
+        component.pre_act(None),
+        "Instructions:\nKeep this scene breezy and a little teasing.\n",
+    )
+
   def test_falls_back_to_stock_instructions_when_scene_type_has_no_override(self):
     component = scene_type_instructions.SceneTypeInstructionsOverride({
         "pod_date": "Keep this scene breezy and a little teasing.",
@@ -107,6 +119,19 @@ class SceneTypeInstructionsTest(absltest.TestCase):
     self.assertEqual(
         component.get_pre_act_value(),
         "Exercise: Keep this scene punchy. --- Response: Warm banter.",
+    )
+
+  def test_examples_pre_act_runs_without_logging_channel_init(self):
+    component = scene_type_instructions.SceneTypeExamplesOverride({
+        "pod_date": "Exercise: Keep this scene punchy. --- Response: Warm"
+                    " banter.",
+    })
+    component.set_entity(_FakeEntity("pod_date"))
+
+    self.assertEqual(
+        component.pre_act(None),
+        "Game master workflow examples:\n"
+        "Exercise: Keep this scene punchy. --- Response: Warm banter.\n",
     )
 
   def test_examples_fall_back_to_stock_examples_when_scene_type_has_no_override(
@@ -133,6 +158,18 @@ class SceneTypeInstructionsTest(absltest.TestCase):
         "Treat this as a delicate first-impression conversation.",
     )
 
+  def test_context_pre_act_runs_without_logging_channel_init(self):
+    component = scene_type_instructions.SceneTypeContextOverride({
+        "pod_date": "Treat this as a delicate first-impression conversation.",
+    })
+    component.set_entity(_FakeEntity("pod_date"))
+
+    self.assertEqual(
+        component.pre_act(None),
+        "Scene-type context override:\n"
+        "Treat this as a delicate first-impression conversation.\n",
+    )
+
   def test_context_override_omits_pre_act_when_scene_type_has_no_value(self):
     component = scene_type_instructions.SceneTypeContextOverride({
         "pod_date": "Treat this as a delicate first-impression conversation.",
@@ -152,6 +189,19 @@ class SceneTypeInstructionsTest(absltest.TestCase):
     self.assertEqual(
         component.get_pre_act_value(),
         "Use only the pod opener and current tension beat.",
+    )
+
+  def test_memory_override_pre_act_runs_without_logging_channel_init(self):
+    component = scene_type_instructions.SceneTypeMemoryOverrideOrFilter(
+        {"pod_date": "Use only the pod opener and current tension beat."},
+        {},
+    )
+    component.set_entity(_FakeEntity("pod_date"))
+
+    self.assertEqual(
+        component.pre_act(None),
+        "Scene-type memory override or filter:\n"
+        "Use only the pod opener and current tension beat.\n",
     )
 
   def test_filters_recent_memories_for_active_scene_type(self):
@@ -175,6 +225,22 @@ class SceneTypeInstructionsTest(absltest.TestCase):
         component.get_pre_act_value(),
         "The pod wall keeps them unseen.\nMarcus is watching for chemistry.",
     )
+
+  def test_scene_type_components_use_logging_channel_when_present(self):
+    logger = mock.MagicMock()
+    component = scene_type_instructions.SceneTypeExamplesOverride({
+        "pod_date": "Exercise: Keep this scene punchy. --- Response: Warm banter.",
+    })
+    component.set_entity(_FakeEntity("pod_date"))
+    component.set_logging_channel(logger)
+
+    component.pre_act(None)
+
+    logger.assert_called_once_with({
+        "Key": "Game master workflow examples",
+        "Value": "Exercise: Keep this scene punchy. --- Response: Warm banter.",
+        "Scene type": "pod_date",
+    })
 
   def test_memory_filter_omits_pre_act_when_scene_type_has_no_config(self):
     component = scene_type_instructions.SceneTypeMemoryOverrideOrFilter(
