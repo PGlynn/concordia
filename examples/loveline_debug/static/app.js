@@ -17,6 +17,19 @@ let selectedLoadedDraftName = "";
 
 const DEFAULT_API_TYPE = "ollama";
 const DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b";
+const DEFAULT_MODEL_PRESET = "local_ollama";
+const MODEL_PRESETS = {
+  local_ollama: {
+    label: "Local Ollama",
+    api_type: "ollama",
+    model_name: "qwen3.5:35b-a3b",
+  },
+  codex_oauth: {
+    label: "Codex OAuth",
+    api_type: "codex_oauth",
+    model_name: "gpt-5.4",
+  },
+};
 const BASIC_ENTITY_HISTORY_LENGTH_FIELDS = [
   ["observation_history_length", "Observation History"],
   ["situation_perception_history_length", "Situation Perception Memories"],
@@ -69,6 +82,8 @@ function summarizeDraftContext(value) {
     selected_candidate_ids: value?.selected_candidate_ids || [],
     max_steps: run.max_steps,
     disable_language_model: Boolean(run.disable_language_model),
+    model_preset: deriveModelPreset(run),
+    model_preset_label: modelPresetLabel(run),
     api_type: run.api_type,
     model_name: run.model_name,
     start_paused: run.start_paused !== false,
@@ -86,6 +101,7 @@ function runContextLabel(context) {
   return [
     pair,
     context?.max_steps ? `${context.max_steps} steps` : "",
+    context?.disable_language_model ? "" : (context?.model_preset_label || modelPresetLabel(context)),
     lm,
     context?.start_paused === false ? "starts playing" : "starts paused",
     context?.checkpoint_every_step === false ? "no checkpoints" : "checkpoints",
@@ -497,6 +513,53 @@ function renderCandidateOptions(selectId, gender, options = {}) {
   );
 }
 
+function deriveModelPreset(run = {}) {
+  const apiType = run?.api_type;
+  const modelName = run?.model_name;
+  for (const [presetName, preset] of Object.entries(MODEL_PRESETS)) {
+    if (apiType === preset.api_type && modelName === preset.model_name) {
+      return presetName;
+    }
+  }
+  return "custom";
+}
+
+function modelPresetLabel(run = {}) {
+  const presetName = deriveModelPreset(run);
+  return MODEL_PRESETS[presetName]?.label || "Custom";
+}
+
+function modelPresetOptionsHtml(selectedPreset = DEFAULT_MODEL_PRESET) {
+  const options = [
+    ...Object.entries(MODEL_PRESETS).map(([value, preset]) =>
+      `<option value="${escapeHtml(value)}"${value === selectedPreset ? " selected" : ""}>${escapeHtml(preset.label)}</option>`
+    ),
+    `<option value="custom"${selectedPreset === "custom" ? " selected" : ""}>Custom</option>`,
+  ];
+  return options.join("");
+}
+
+function applyModelPresetSelection(presetName, elements = {}) {
+  const preset = MODEL_PRESETS[presetName];
+  const apiTypeInput = elements.apiTypeInput || $("apiType");
+  const modelNameInput = elements.modelNameInput || $("modelName");
+  const modelPresetSelect = elements.modelPresetSelect || $("modelPreset");
+  if (!preset) {
+    if (modelPresetSelect) modelPresetSelect.value = "custom";
+    return;
+  }
+  if (apiTypeInput) apiTypeInput.value = preset.api_type;
+  if (modelNameInput) modelNameInput.value = preset.model_name;
+  if (modelPresetSelect) modelPresetSelect.value = presetName;
+}
+
+function syncModelPresetControl(run = draft?.run || {}) {
+  const select = $("modelPreset");
+  if (!select) return;
+  select.innerHTML = modelPresetOptionsHtml(deriveModelPreset(run));
+  select.value = deriveModelPreset(run);
+}
+
 function renderConfigTab() {
   renderCandidateOptions("maleCandidate", "man");
   renderCandidateOptions("femaleCandidate", "woman");
@@ -508,6 +571,7 @@ function renderConfigTab() {
   $("defaultPremise").value = draft.scene_defaults?.default_premise || "";
   $("maxSteps").value = draft.run?.max_steps || 8;
   $("disableLm").checked = Boolean(draft.run?.disable_language_model);
+  syncModelPresetControl(draft.run || {});
   $("apiType").value = draft.run?.api_type || DEFAULT_API_TYPE;
   $("modelName").value = draft.run?.model_name || DEFAULT_MODEL_NAME;
   $("startPaused").checked = draft.run?.start_paused !== false;
@@ -801,6 +865,11 @@ function collectConfigForm() {
     ...(raw.run || draft.run || {}),
     max_steps: Number($("maxSteps").value || 8),
     disable_language_model: $("disableLm").checked,
+    model_preset: deriveModelPreset({
+      model_preset: $("modelPreset").value,
+      api_type: $("apiType").value,
+      model_name: $("modelName").value,
+    }),
     api_type: $("apiType").value,
     model_name: $("modelName").value,
     start_paused: $("startPaused").checked,
@@ -1909,6 +1978,24 @@ if (typeof document !== "undefined") {
     }
   });
 
+  $("modelPreset").addEventListener("change", () => {
+    try {
+      applyModelPresetSelection($("modelPreset").value);
+      markDirty();
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  ["apiType", "modelName"].forEach((id) => {
+    $(id).addEventListener("input", () => {
+      syncModelPresetControl({
+        api_type: $("apiType").value,
+        model_name: $("modelName").value,
+      });
+    });
+  });
+
   $("applyContestantsJson").addEventListener("click", () => {
     try {
       draft.contestants = JSON.parse($("contestantsJson").value);
@@ -2223,6 +2310,8 @@ if (typeof module !== "undefined") {
     filteredLogEntries,
     DEFAULT_API_TYPE,
     DEFAULT_MODEL_NAME,
+    DEFAULT_MODEL_PRESET,
+    MODEL_PRESETS,
     BASIC_ENTITY_HISTORY_LENGTH_FIELDS,
     STOCK_BASIC_ENTITY_COMPONENT_FIELDS,
     ENTITY_PREFAB_OPTIONS,
@@ -2249,6 +2338,11 @@ if (typeof module !== "undefined") {
     logSearchText,
     collectConfigForm,
     renderConfigTab,
+    deriveModelPreset,
+    modelPresetLabel,
+    modelPresetOptionsHtml,
+    applyModelPresetSelection,
+    syncModelPresetControl,
     runContextLabel,
     stripDialogueSpeakerPrefix,
     runOperationButtonState,

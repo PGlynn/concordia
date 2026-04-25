@@ -60,18 +60,22 @@ Runs start paused. Click `Step` for deterministic inspection, or `Play` to let
 the run proceed.
 
 By default, `Disable language model` is unchecked so fresh drafts use
-Loveline's local starter stack: `API Type` is `ollama` and `Model` is
-`qwen3.5:35b-a3b`. Check `Disable language model` when you want Concordia's
-`NoLanguageModel` path for quick config, checkpoint, and logging smoke tests
-without any model dependency.
+Loveline's local starter stack: preset `Local Ollama`, `API Type` `ollama`, and
+`Model` `qwen3.5:35b-a3b`. The Run Settings form now also exposes a `Codex
+OAuth` preset that maps to `api_type` `codex_oauth` and recommended model
+`gpt-5.4`. Loveline explicitly does not default that preset to `gpt-5.5`.
+Check `Disable language model` when you want Concordia's `NoLanguageModel` path
+for quick config, checkpoint, and logging smoke tests without any model
+dependency.
 
 For `API Type` `ollama`, this debug UI uses a Loveline-local Ollama shim under
 `examples/loveline_debug` instead of changing Concordia's shared Ollama model.
-The shim keeps the same provider/model selection, passes `think=False` for text
-and choice generation, forwards stop tokens, and maps practical request controls
-such as `max_tokens` and `seed` into Ollama request options. It also keeps the
-local Loveline adapter's in-world prompting, response cleanup, and numbered JSON
-choice parsing. Non-Ollama providers continue to use Concordia's stock
+For `API Type` `codex_oauth`, it uses a Loveline-local adapter that shells out
+to `codex exec` with the already logged-in server-side Codex CLI OAuth session,
+using ephemeral execution, `--skip-git-repo-check`, read-only sandboxing, no
+color, and `--output-last-message` capture. Neither Loveline path requires a
+user-entered API key. The local adapters both support `sample_text` and
+`sample_choice`. Other providers continue to use Concordia's stock
 `language_model_setup`.
 
 ## Artifact Layout

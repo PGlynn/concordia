@@ -143,6 +143,7 @@ class RunnerTest(absltest.TestCase):
         "run": {
             "max_steps": 12,
             "disable_language_model": True,
+            "model_preset": "codex_oauth",
             "api_type": "ollama",
             "model_name": "qwen3.5:35b-a3b",
             "start_paused": False,
@@ -164,6 +165,8 @@ class RunnerTest(absltest.TestCase):
     self.assertEqual(summary["show_flow"][0]["rounds"], 2)
     self.assertEqual(summary["max_steps"], 12)
     self.assertTrue(summary["disable_language_model"])
+    self.assertEqual(summary["model_preset"], "local_ollama")
+    self.assertEqual(summary["model_preset_label"], "Local Ollama")
     self.assertFalse(summary["start_paused"])
     self.assertFalse(summary["checkpoint_every_step"])
     self.assertTrue(summary["skip_generated_formative_memories"])

@@ -5,6 +5,7 @@ const path = require("path");
 const {
   DEFAULT_API_TYPE,
   DEFAULT_MODEL_NAME,
+  DEFAULT_MODEL_PRESET,
   draftFingerprint,
   formatRunTimestamp,
   renderDialogueRunWorkflow,
@@ -17,6 +18,7 @@ const {
 function testBrowserFallbackRunSettingsUseLocalLovelineModel() {
   assert.equal(DEFAULT_API_TYPE, "ollama");
   assert.equal(DEFAULT_MODEL_NAME, "qwen3.5:35b-a3b");
+  assert.equal(DEFAULT_MODEL_PRESET, "local_ollama");
 }
 
 function testDraftFingerprintIgnoresObjectKeyOrder() {
@@ -43,6 +45,7 @@ function testSummarizeDraftContextIncludesGuardrailMetadata() {
     run: {
       max_steps: 9,
       disable_language_model: false,
+      model_preset: "codex_oauth",
       api_type: "ollama",
       model_name: "qwen3.5:35b-a3b",
       start_paused: false,
@@ -55,6 +58,8 @@ function testSummarizeDraftContextIncludesGuardrailMetadata() {
   assert.equal(summary.scene_count, 1);
   assert.equal(summary.max_steps, 9);
   assert.equal(summary.disable_language_model, false);
+  assert.equal(summary.model_preset, "local_ollama");
+  assert.equal(summary.model_preset_label, "Local Ollama");
   assert.equal(summary.start_paused, false);
   assert.equal(summary.checkpoint_every_step, false);
 }
@@ -64,12 +69,13 @@ function testRunContextLabelMakesRecentRunsReadable() {
     selected_pair: ["Alex", "Blake"],
     max_steps: 9,
     disable_language_model: false,
+    model_preset_label: "Local Ollama",
     model_name: "qwen3.5:35b-a3b",
     start_paused: false,
     checkpoint_every_step: false,
   });
 
-  assert.equal(label, "Alex vs Blake | 9 steps | qwen3.5:35b-a3b | starts playing | no checkpoints");
+  assert.equal(label, "Alex vs Blake | 9 steps | Local Ollama | qwen3.5:35b-a3b | starts playing | no checkpoints");
 }
 
 function testRunContextLabelKeepsSmokeModeReadable() {

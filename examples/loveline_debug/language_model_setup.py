@@ -6,6 +6,7 @@ from concordia.contrib import language_models
 from concordia.language_model import language_model
 from concordia.language_model import no_language_model
 
+from examples.loveline_debug import codex_oauth_shim
 from examples.loveline_debug import ollama_shim
 
 
@@ -23,6 +24,15 @@ def setup(
     if api_key:
       raise ValueError("Loveline debug Ollama runs do not use api_key.")
     return ollama_shim.LovelineOllamaLanguageModel(model_name=model_name)
+  if api_type == "codex_oauth":
+    if api_key:
+      raise ValueError(
+          "Loveline debug Codex OAuth runs use the server-side Codex CLI "
+          "login session, not api_key."
+      )
+    return codex_oauth_shim.LovelineCodexOAuthLanguageModel(
+        model_name=model_name
+    )
   return language_models.language_model_setup(
       api_type=api_type,
       model_name=model_name,

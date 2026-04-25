@@ -27,8 +27,21 @@ STARTER_ROOT = Path(
     "/Users/claw/.openclaw/games/loveline/concordia_dating_show_starter"
 )
 DRAFT_SCHEMA_VERSION = 1
-DEFAULT_API_TYPE = "ollama"
-DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b"
+RUN_MODEL_PRESETS = {
+    "local_ollama": {
+        "label": "Local Ollama",
+        "api_type": "ollama",
+        "model_name": "qwen3.5:35b-a3b",
+    },
+    "codex_oauth": {
+        "label": "Codex OAuth",
+        "api_type": "codex_oauth",
+        "model_name": "gpt-5.4",
+    },
+}
+DEFAULT_MODEL_PRESET = "local_ollama"
+DEFAULT_API_TYPE = RUN_MODEL_PRESETS[DEFAULT_MODEL_PRESET]["api_type"]
+DEFAULT_MODEL_NAME = RUN_MODEL_PRESETS[DEFAULT_MODEL_PRESET]["model_name"]
 DEFAULT_SKIP_GENERATED_FORMATIVE_MEMORIES = False
 DEFAULT_STRICT_CANDIDATE_FACT_ANCHORING = False
 BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS = {
@@ -267,6 +280,7 @@ def make_draft_for_selection(
       "run": {
           "max_steps": 8,
           "disable_language_model": False,
+          "model_preset": DEFAULT_MODEL_PRESET,
           "api_type": DEFAULT_API_TYPE,
           "model_name": DEFAULT_MODEL_NAME,
           "api_key": None,
@@ -306,6 +320,30 @@ def hydrate_draft(
       if candidate_id in by_id or candidate_id in legacy_by_id
   ]
   return draft
+
+
+def run_model_preset(run: dict[str, Any] | None) -> str:
+  """Returns the named Loveline model preset for explicit run settings."""
+  run = run or {}
+  api_type = run.get("api_type")
+  model_name = run.get("model_name")
+  for preset_name, preset in RUN_MODEL_PRESETS.items():
+    if (
+        api_type == preset["api_type"]
+        and model_name == preset["model_name"]
+    ):
+      return preset_name
+  requested = run.get("model_preset")
+  if requested in RUN_MODEL_PRESETS:
+    return "custom"
+  return "custom"
+
+
+def run_model_preset_label(run: dict[str, Any] | None) -> str:
+  preset_name = run_model_preset(run)
+  if preset_name in RUN_MODEL_PRESETS:
+    return str(RUN_MODEL_PRESETS[preset_name]["label"])
+  return "Custom"
 
 
 def normalized_draft_for_storage(draft: dict[str, Any]) -> dict[str, Any]:

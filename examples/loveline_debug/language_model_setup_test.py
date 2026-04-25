@@ -63,6 +63,43 @@ class LanguageModelSetupTest(absltest.TestCase):
         }],
     )
 
+  def test_codex_oauth_uses_loveline_codex_adapter(self):
+    calls = []
+
+    class FakeLovelineCodexOAuth:
+
+      def __init__(self, **kwargs):
+        calls.append(kwargs)
+
+    original_cls = (
+        language_model_setup.codex_oauth_shim.LovelineCodexOAuthLanguageModel
+    )
+    language_model_setup.codex_oauth_shim.LovelineCodexOAuthLanguageModel = (
+        FakeLovelineCodexOAuth
+    )
+    try:
+      model = language_model_setup.setup(
+          api_type="codex_oauth",
+          model_name="gpt-5.4",
+          disable_language_model=False,
+      )
+    finally:
+      language_model_setup.codex_oauth_shim.LovelineCodexOAuthLanguageModel = (
+          original_cls
+      )
+
+    self.assertIsInstance(model, FakeLovelineCodexOAuth)
+    self.assertEqual(calls, [{"model_name": "gpt-5.4"}])
+
+  def test_codex_oauth_rejects_api_key(self):
+    with self.assertRaisesRegex(ValueError, "server-side Codex CLI"):
+      language_model_setup.setup(
+          api_type="codex_oauth",
+          model_name="gpt-5.4",
+          api_key="nope",
+          disable_language_model=False,
+      )
+
 
 if __name__ == "__main__":
   absltest.main()

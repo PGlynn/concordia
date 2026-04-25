@@ -416,6 +416,8 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
       "show_flow": scenes,
       "max_steps": run.get("max_steps"),
       "disable_language_model": bool(run.get("disable_language_model")),
+      "model_preset": run.get("model_preset") or config_io.run_model_preset(run),
+      "model_preset_label": config_io.run_model_preset_label(run),
       "api_type": run.get("api_type"),
       "model_name": run.get("model_name"),
       "model": run.get("model_name"),

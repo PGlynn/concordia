@@ -35,10 +35,42 @@ class ConfigIoTest(absltest.TestCase):
     draft = config_io.make_default_draft()
 
     self.assertFalse(draft["run"]["disable_language_model"])
+    self.assertEqual(draft["run"]["model_preset"], "local_ollama")
     self.assertEqual(draft["run"]["api_type"], "ollama")
     self.assertEqual(draft["run"]["model_name"], "qwen3.5:35b-a3b")
     self.assertFalse(draft["run"]["skip_generated_formative_memories"])
     self.assertFalse(draft["run"]["strict_candidate_fact_anchoring"])
+
+  def test_run_model_preset_helpers_cover_known_and_custom_paths(self):
+    self.assertEqual(
+        config_io.run_model_preset({
+            "api_type": "ollama",
+            "model_name": "qwen3.5:35b-a3b",
+        }),
+        "local_ollama",
+    )
+    self.assertEqual(
+        config_io.run_model_preset({
+            "api_type": "codex_oauth",
+            "model_name": "gpt-5.4",
+        }),
+        "codex_oauth",
+    )
+    self.assertEqual(
+        config_io.run_model_preset({
+            "api_type": "codex_oauth",
+            "model_name": "gpt-5.5",
+            "model_preset": "codex_oauth",
+        }),
+        "custom",
+    )
+    self.assertEqual(
+        config_io.run_model_preset_label({
+            "api_type": "codex_oauth",
+            "model_name": "gpt-5.4",
+        }),
+        "Codex OAuth",
+    )
 
   def test_default_draft_exposes_stock_basic_entity_history_lengths(self):
     draft = config_io.make_default_draft()
