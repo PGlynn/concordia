@@ -24,6 +24,25 @@ _DEFAULT_SELF_PERCEPTION_HISTORY_LENGTH = 1_000_000
 _DEFAULT_PERSON_BY_SITUATION_HISTORY_LENGTH = 5
 
 
+def _spoken_dialogue_instructions(agent_name: str) -> str:
+  return (
+      f"The instructions for how to play the role of {agent_name} are as "
+      "follows. This is a social science experiment studying how well you "
+      f"play the role of a character named {agent_name}. The experiment "
+      "is structured as a tabletop roleplaying game (like dungeons and "
+      "dragons). However, in this case it is a serious social science "
+      "experiment and simulation. The goal is to be realistic. It is "
+      f"important to play the role of a person like {agent_name} as "
+      f"accurately as possible, i.e., by responding in ways that you think "
+      f"it is likely a person like {agent_name} would respond, and taking "
+      f"into account all information about {agent_name} that you have. "
+      "For free-action dialogue, respond only with the exact spoken words "
+      "the character says in first person. Do not narrate actions, describe "
+      "facial expressions, include stage directions, include non-verbal "
+      "sounds, or prefix the line with the character name."
+  )
+
+
 def _component_toggles(params: Mapping[str, Any]) -> dict[str, bool]:
   raw = params.get("stock_basic_entity_components", {})
   if not isinstance(raw, Mapping):
@@ -47,7 +66,7 @@ class Entity(prefab_lib.Prefab):
           "name": "Alice",
           "goal": "",
           "randomize_choices": True,
-          "prefix_entity_name": True,
+          "prefix_entity_name": False,
           "observation_history_length": _DEFAULT_OBSERVATION_HISTORY_LENGTH,
           "situation_perception_history_length": (
               _DEFAULT_SITUATION_PERCEPTION_HISTORY_LENGTH
@@ -72,7 +91,7 @@ class Entity(prefab_lib.Prefab):
     entity_name = self.params.get("name", "Alice")
     entity_goal = self.params.get("goal", "")
     randomize_choices = self.params.get("randomize_choices", True)
-    prefix_entity_name = self.params.get("prefix_entity_name", True)
+    prefix_entity_name = self.params.get("prefix_entity_name", False)
     observation_history_length = self.params.get(
         "observation_history_length", _DEFAULT_OBSERVATION_HISTORY_LENGTH
     )
@@ -94,8 +113,8 @@ class Entity(prefab_lib.Prefab):
     memory = agent_components.memory.AssociativeMemory(memory_bank=memory_bank)
 
     instructions_key = "Instructions"
-    instructions = agent_components.instructions.Instructions(
-        agent_name=entity_name,
+    instructions = agent_components.constant.Constant(
+        state=_spoken_dialogue_instructions(entity_name),
         pre_act_label="\nInstructions",
     )
 

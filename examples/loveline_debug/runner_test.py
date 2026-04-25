@@ -172,6 +172,23 @@ class RunnerTest(absltest.TestCase):
     self.assertTrue(summary["skip_generated_formative_memories"])
     self.assertTrue(summary["strict_candidate_fact_anchoring"])
 
+  def test_draft_summary_ignores_stale_model_preset_when_model_is_custom(self):
+    draft = {
+        "contestants": [{"name": "Alex"}, {"name": "Blake"}],
+        "scene_types": {},
+        "scenes": [],
+        "run": {
+            "model_preset": "codex_oauth",
+            "api_type": "codex_oauth",
+            "model_name": "gpt-5.5",
+        },
+    }
+
+    summary = runner._draft_summary(draft)  # pylint: disable=protected-access
+
+    self.assertEqual(summary["model_preset"], "custom")
+    self.assertEqual(summary["model_preset_label"], "Custom")
+
   def test_on_step_cleans_duplicate_speaker_prefix_and_preserves_raw_action(self):
     paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
     manager = runner.RunManager(paths)

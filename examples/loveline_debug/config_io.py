@@ -14,12 +14,12 @@ import yaml
 
 from concordia.prefabs import entity as entity_prefabs
 from concordia.prefabs import game_master as game_master_prefabs
-from concordia.prefabs.game_master import formative_memories_initializer
 from concordia.typing import entity as entity_lib
 from concordia.typing import prefab as prefab_lib
 from concordia.typing import scene as scene_lib
 from examples.loveline_debug import basic_entity_controls
 from examples.loveline_debug import dialogic_and_dramaturgic as loveline_dialogic_and_dramaturgic
+from examples.loveline_debug import formative_memories_initializer as loveline_formative_memories_initializer
 from examples.loveline_debug import scene_type_instructions
 
 
@@ -127,6 +127,7 @@ def _apply_candidate_defaults(candidate: dict[str, Any]) -> dict[str, Any]:
   entity_params = candidate.setdefault("entity_params", {})
   if candidate.get("name"):
     entity_params.setdefault("name", candidate["name"])
+  entity_params.setdefault("prefix_entity_name", False)
   for key, value in BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS.items():
     entity_params.setdefault(key, value)
   component_cfg = entity_params.setdefault("stock_basic_entity_components", {})
@@ -513,7 +514,7 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
   }
   instances.append(
       prefab_lib.InstanceConfig(
-          prefab="formative_memories_initializer__GameMaster",
+          prefab="loveline_formative_memories_initializer__GameMaster",
           role=prefab_lib.Role.INITIALIZER,
           params={
               "name": "Backstory Initializer",
@@ -558,8 +559,8 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
           "loveline_dialogic_and_dramaturgic__GameMaster": (
               loveline_dialogic_and_dramaturgic.GameMaster()
           ),
-          "formative_memories_initializer__GameMaster": (
-              formative_memories_initializer.GameMaster()
+          "loveline_formative_memories_initializer__GameMaster": (
+              loveline_formative_memories_initializer.GameMaster()
           ),
       },
       instances=instances,
@@ -679,23 +680,26 @@ def _contestant_fact_anchor_lines(contestant: dict[str, Any]) -> list[str]:
   if age not in (None, ""):
     lines.append(f"Age: {age}.")
 
+  context = contestant.get("player_specific_context", "")
+  memories = contestant.get("player_specific_memories", []) or []
   source_persona = contestant.get("source_persona") or {}
-  occupation = (
-      source_persona.get("core_identity", {}).get("occupation")
-      or _context_line_value(contestant.get("player_specific_context", ""), "Occupation")
+  occupation = _first_nonempty(
+      _context_line_value(context, "Occupation"),
+      _memory_fact_value(memories, "occupation"),
+      source_persona.get("core_identity", {}).get("occupation"),
   )
   if occupation:
     lines.append(f"Occupation: {occupation}.")
 
-  hometown = source_persona.get("core_identity", {}).get("hometown")
+  hometown = _first_nonempty(
+      _context_line_value(context, "Hometown"),
+      _memory_fact_value(memories, "hometown"),
+      source_persona.get("core_identity", {}).get("hometown"),
+  )
   if hometown:
     lines.append(f"Hometown: {hometown}.")
 
-  lines.extend(
-      _memory_fact_lines(
-          contestant.get("player_specific_memories", []) or []
-      )
-  )
+  lines.extend(_memory_fact_lines(memories))
   deduped = []
   for line in lines:
     clean = str(line).strip()
@@ -712,6 +716,14 @@ def _context_line_value(context: str, label: str) -> str:
   return ""
 
 
+def _first_nonempty(*values: Any) -> str:
+  for value in values:
+    text = str(value or "").strip()
+    if text:
+      return text
+  return ""
+
+
 def _memory_fact_lines(memories: list[str]) -> list[str]:
   facts = []
   for memory in memories:
@@ -724,4 +736,23 @@ def _memory_fact_lines(memories: list[str]) -> list[str]:
       continue
     if re.search(r"\b(dog|cat|pets?)\b", lowered) and text not in facts:
       facts.append(text if text.endswith(".") else f"{text}.")
+      continue
+    if re.search(r"\b(works as|work as|occupation|job|teacher|engineer)\b", lowered):
+      facts.append(text if text.endswith(".") else f"{text}.")
+      continue
+    if re.search(r"\b(hometown|from)\b", lowered):
+      facts.append(text if text.endswith(".") else f"{text}.")
   return facts[:4]
+
+
+def _memory_fact_value(memories: list[str], fact_type: str) -> str:
+  for memory in memories:
+    text = str(memory).strip()
+    lowered = text.lower()
+    if fact_type == "occupation" and re.search(
+        r"\b(works as|work as|occupation|job|teacher|engineer)\b", lowered
+    ):
+      return text.rstrip(".")
+    if fact_type == "hometown" and re.search(r"\b(hometown|from)\b", lowered):
+      return text.rstrip(".")
+  return ""

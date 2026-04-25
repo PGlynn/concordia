@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from absl.testing import absltest
 
 from concordia.associative_memory import basic_associative_memory
+from concordia.components import game_master as gm_components
 from concordia.language_model import no_language_model
 from concordia.typing import prefab as prefab_lib
 from examples.loveline_debug import basic_entity_controls
@@ -116,7 +117,9 @@ class ConfigIoTest(absltest.TestCase):
         {"basic__Entity"},
     )
     self.assertIn("dialogic_and_dramaturgic__GameMaster", config.prefabs)
-    self.assertIn("formative_memories_initializer__GameMaster", config.prefabs)
+    self.assertIn(
+        "loveline_formative_memories_initializer__GameMaster", config.prefabs
+    )
     self.assertIsInstance(
         config.prefabs["basic__Entity"], basic_entity_controls.Entity
     )
@@ -282,6 +285,38 @@ class ConfigIoTest(absltest.TestCase):
         [item["name"] for item in loaded["contestants"]],
     )
 
+  def test_skip_generated_formative_memories_reaches_built_initializer_component(
+      self,
+  ):
+    draft = config_io.make_default_draft()
+    draft["run"]["skip_generated_formative_memories"] = True
+    config = config_io.build_config(draft)
+
+    initializer_instance = next(
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.INITIALIZER
+    )
+    initializer_prefab = copy.deepcopy(config.prefabs[initializer_instance.prefab])
+    initializer_prefab.params = initializer_instance.params
+    initializer_prefab.entities = [
+        SimpleNamespace(name=item["name"]) for item in draft["contestants"]
+    ]
+    initializer = initializer_prefab.build(
+        model=no_language_model.NoLanguageModel(),
+        memory_bank=basic_associative_memory.AssociativeMemoryBank(
+            sentence_embedder=_embedder
+        ),
+    )
+
+    component = initializer.get_component(
+        gm_components.next_game_master.DEFAULT_NEXT_GAME_MASTER_COMPONENT_KEY
+    )
+    self.assertEqual(
+        component._skip_formative_memories_for,  # pylint: disable=protected-access
+        {item["name"] for item in draft["contestants"]},
+    )
+
   def test_strict_candidate_fact_anchoring_persists_and_sets_initializer(self):
     draft = config_io.make_default_draft()
     draft["run"]["strict_candidate_fact_anchoring"] = True
@@ -312,6 +347,55 @@ class ConfigIoTest(absltest.TestCase):
     self.assertIn("Occupation: Enterprise software sales director.", context)
     self.assertIn("three siblings", context)
     self.assertIn("dog named Cuddles", memories[0])
+
+  def test_strict_candidate_fact_anchoring_prefers_context_over_source_persona(
+      self,
+  ):
+    draft = config_io.make_default_draft()
+    draft["run"]["strict_candidate_fact_anchoring"] = True
+    draft["contestants"][0]["player_specific_context"] = (
+        "Occupation: Elementary School Teacher\n"
+        "Hometown: Oakland, California"
+    )
+
+    config = config_io.build_config(draft)
+
+    initializer = next(
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.INITIALIZER
+    )
+    context = initializer.params["player_specific_context"][
+        draft["contestants"][0]["name"]
+    ]
+    self.assertIn("Occupation: Elementary School Teacher.", context)
+    self.assertIn("Hometown: Oakland, California.", context)
+    self.assertNotIn("Occupation: Enterprise software sales director.", context)
+
+  def test_strict_candidate_fact_anchoring_uses_memory_facts_before_source_fallback(
+      self,
+  ):
+    draft = config_io.make_default_draft()
+    draft["run"]["strict_candidate_fact_anchoring"] = True
+    draft["contestants"][0]["player_specific_context"] = ""
+    draft["contestants"][0]["player_specific_memories"] = [
+        "She works as an Elementary School Teacher.",
+    ]
+
+    config = config_io.build_config(draft)
+
+    initializer = next(
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.INITIALIZER
+    )
+    context = initializer.params["player_specific_context"][
+        draft["contestants"][0]["name"]
+    ]
+    self.assertIn(
+        "Occupation: She works as an Elementary School Teacher.", context
+    )
+    self.assertNotIn("Occupation: Enterprise software sales director.", context)
 
   def test_scene_type_instructions_override_persists_through_draft_json(self):
     draft = config_io.make_default_draft()
@@ -628,6 +712,24 @@ class ConfigIoTest(absltest.TestCase):
             "__memory__",
         ),
     )
+
+  def test_debug_basic_entity_uses_spoken_dialogue_only_instructions(self):
+    entity_config = basic_entity_controls.Entity(params={"name": "Alex"})
+
+    entity = entity_config.build(
+        model=no_language_model.NoLanguageModel(),
+        memory_bank=basic_associative_memory.AssociativeMemoryBank(
+            sentence_embedder=_embedder
+        ),
+    )
+
+    instructions = entity.get_component("Instructions").get_state()["state"]
+    act_state = entity.get_act_component().get_state()
+    self.assertNotIn("Always use third-person limited perspective.", instructions)
+    self.assertIn("respond only with the exact spoken words", instructions.lower())
+    self.assertIn("first person", instructions.lower())
+    self.assertIn("do not narrate actions", instructions.lower())
+    self.assertFalse(act_state["prefix_entity_name"])
 
   def test_rejects_two_candidates_with_same_gender(self):
     source = config_io.list_source_data()
