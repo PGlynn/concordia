@@ -7,6 +7,7 @@ const {
   cleanDialogueEntries,
   cleanDialogueStepLabel,
   cleanDialogueText,
+  stripDialogueSpeakerPrefix,
   activeDialogueState,
   completedDialogueHandoffRunId,
   followedActiveDialogueRunId,
@@ -46,8 +47,8 @@ const state = {
       step: 1,
       entry_type: "entity",
       entity_name: "Alex",
-      raw_utterance_text: "I want the real thing.",
-      concordia_event_text: "Alex: I want the real thing.",
+      raw_utterance_text: "Alex: Alex: I want the real thing.",
+      concordia_event_text: "Alex: Alex: I want the real thing.",
     },
     {
       index: 1,
@@ -85,7 +86,7 @@ function testCleanDialogueFiltersCandidateDialogueOnly() {
   assert.equal(entries.length, 2);
   assert.equal(entries[0].entity_name, "Alex");
   assert.equal(entries[1].entity_name, "Blake");
-  assert.equal(cleanDialogueText(entries[0]), "Alex: I want the real thing.");
+  assert.equal(cleanDialogueText(entries[0]), "I want the real thing.");
 }
 
 function testCleanDialogueContextPrefersStateSummary() {
@@ -102,9 +103,10 @@ function testRenderCleanDialogueShowsContextAndConversation() {
   assert.match(elements.get("cleanDialogueView").innerHTML, /dialogue-turn/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /Spoken turn 1/);
   assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /engine step/);
-  assert.match(elements.get("cleanDialogueView").innerHTML, /Alex: I want the real thing/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, />I want the real thing\.</);
   assert.match(elements.get("cleanDialogueView").innerHTML, /Show raw utterance/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /<details class="dialogue-raw">/);
+  assert.match(elements.get("cleanDialogueView").innerHTML, /Alex: Alex: I want the real thing/);
   assert.match(elements.get("cleanDialogueView").innerHTML, /That means a lot to hear/);
   assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /The date continues/);
 }
@@ -123,6 +125,17 @@ function testCleanDialogueHidesEngineStepWhenFirstSpeechStartsAtStepTwo() {
   assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /First spoken turn is engine step 2/);
   assert.doesNotMatch(elements.get("cleanDialogueView").innerHTML, /engine step 2/);
   assert.equal(cleanDialogueStepLabel({step: 2}, 0), "Spoken turn 1");
+}
+
+function testStripDialogueSpeakerPrefixRemovesRepeatedLabelOnly() {
+  assert.equal(
+    stripDialogueSpeakerPrefix("Lena Park: Lena Park: Hi there.", "Lena Park"),
+    "Hi there."
+  );
+  assert.equal(
+    stripDialogueSpeakerPrefix("Marcus Vale: Hello there.", "Lena Park"),
+    "Marcus Vale: Hello there."
+  );
 }
 
 function testRenderCleanDialogueCanFollowActiveRun() {
@@ -193,6 +206,7 @@ testCleanDialogueFiltersCandidateDialogueOnly();
 testCleanDialogueContextPrefersStateSummary();
 testRenderCleanDialogueShowsContextAndConversation();
 testCleanDialogueHidesEngineStepWhenFirstSpeechStartsAtStepTwo();
+testStripDialogueSpeakerPrefixRemovesRepeatedLabelOnly();
 testRenderCleanDialogueCanFollowActiveRun();
 testCompletedRunHandoffKeepsFollowingTheSameRun();
 console.log("app_clean_dialogue_test passed");

@@ -74,6 +74,7 @@ function summarizeDraftContext(value) {
     start_paused: run.start_paused !== false,
     checkpoint_every_step: run.checkpoint_every_step !== false,
     skip_generated_formative_memories: Boolean(run.skip_generated_formative_memories),
+    strict_candidate_fact_anchoring: Boolean(run.strict_candidate_fact_anchoring),
     scene_count: (value?.scenes || []).length,
     source_root: value?.source_root,
   };
@@ -89,6 +90,7 @@ function runContextLabel(context) {
     context?.start_paused === false ? "starts playing" : "starts paused",
     context?.checkpoint_every_step === false ? "no checkpoints" : "checkpoints",
     context?.skip_generated_formative_memories ? "skip formative memories" : "",
+    context?.strict_candidate_fact_anchoring ? "strict fact anchors" : "",
   ].filter(Boolean).join(" | ");
 }
 
@@ -131,6 +133,10 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeRegExp(value) {
+  return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function selectHasFocus(select) {
@@ -509,6 +515,9 @@ function renderConfigTab() {
   $("skipGeneratedFormativeMemories").checked = Boolean(
     draft.run?.skip_generated_formative_memories
   );
+  $("strictCandidateFactAnchoring").checked = Boolean(
+    draft.run?.strict_candidate_fact_anchoring
+  );
   $("configRawJson").value = pretty({
     schema_version: draft.schema_version,
     name: draft.name,
@@ -797,6 +806,7 @@ function collectConfigForm() {
     start_paused: $("startPaused").checked,
     checkpoint_every_step: $("checkpointEveryStep").checked,
     skip_generated_formative_memories: $("skipGeneratedFormativeMemories").checked,
+    strict_candidate_fact_anchoring: $("strictCandidateFactAnchoring").checked,
   };
 }
 
@@ -1373,7 +1383,15 @@ function renderLogArtifactLink(state = logsState) {
 
 function cleanDialogueText(entry) {
   const value = entry?.concordia_event_text || entry?.raw_utterance_text || entry?.action || entry?.preview || "";
-  return typeof value === "string" ? value : displayValue(value);
+  const text = typeof value === "string" ? value : displayValue(value);
+  return stripDialogueSpeakerPrefix(text, entry?.entity_name);
+}
+
+function stripDialogueSpeakerPrefix(value, entityName) {
+  const text = String(value ?? "").trim();
+  if (!text || !entityName) return text;
+  const pattern = new RegExp(`^(?:${escapeRegExp(entityName)}\\s*:\\s*)+`, "i");
+  return text.replace(pattern, "").trim();
 }
 
 function cleanDialogueEntries(state = cleanDialogueState) {
@@ -1410,6 +1428,7 @@ function activeDialogueState(status = latestStatus) {
       step: entry.step,
       entity_name: entry.acting_entity,
       action: entry.action,
+      raw_action: entry.raw_action,
       raw_entry: entry,
       entry_type: "entity",
       live: true,
@@ -1456,8 +1475,9 @@ function renderCleanDialogue(state = cleanDialogueState) {
   }
   $("cleanDialogueView").innerHTML = `<div class="dialogue-list">${entries.map((entry, index) => {
     const text = cleanDialogueText(entry);
-    const raw = entry.raw_utterance_text && entry.raw_utterance_text !== text
-      ? `<details class="dialogue-raw"><summary>Show raw utterance</summary><pre>${escapeHtml(entry.raw_utterance_text)}</pre></details>`
+    const rawText = entry.raw_utterance_text || entry.raw_action || "";
+    const raw = rawText && rawText !== text
+      ? `<details class="dialogue-raw"><summary>Show raw utterance</summary><pre>${escapeHtml(rawText)}</pre></details>`
       : "";
     return `<article class="dialogue-turn">
       <div class="dialogue-turn-header">
@@ -2230,6 +2250,7 @@ if (typeof module !== "undefined") {
     collectConfigForm,
     renderConfigTab,
     runContextLabel,
+    stripDialogueSpeakerPrefix,
     runOperationButtonState,
     startRunFromCurrentDraft,
     summarizeDraftContext,

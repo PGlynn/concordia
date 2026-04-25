@@ -6,6 +6,7 @@ import collections.abc
 import dataclasses
 import datetime as dt
 import json
+import re
 import shutil
 import threading
 import traceback
@@ -249,10 +250,14 @@ class RunManager:
   ) -> None:
     control.broadcast_step(step_data)
     record.current_step = step_data.step
+    cleaned_action = _clean_dialogue_action_text(
+        step_data.action, step_data.acting_entity
+    )
     record.transcript.append({
         "step": step_data.step,
         "acting_entity": step_data.acting_entity,
-        "action": step_data.action,
+        "action": cleaned_action,
+        "raw_action": step_data.action,
         "entity_actions": step_data.entity_actions,
     })
     self._write_status(record)
@@ -419,6 +424,9 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
       "skip_generated_formative_memories": bool(
           run.get("skip_generated_formative_memories")
       ),
+      "strict_candidate_fact_anchoring": bool(
+          run.get("strict_candidate_fact_anchoring")
+      ),
   }
 
 
@@ -430,3 +438,16 @@ def _install_json_safe_checkpointing(sim: Any) -> None:
     return _json_safe(make_checkpoint_data())
 
   sim.make_checkpoint_data = make_json_safe_checkpoint_data
+
+
+def _clean_dialogue_action_text(action: Any, entity_name: str | None) -> Any:
+  if not isinstance(action, str):
+    return action
+  cleaned = action.strip()
+  if not cleaned or not entity_name:
+    return cleaned
+  pattern = re.compile(
+      rf"^(?:{re.escape(entity_name)}\s*:\s*)+",
+      flags=re.IGNORECASE,
+  )
+  return pattern.sub("", cleaned).strip()

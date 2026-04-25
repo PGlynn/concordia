@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import datetime as dt
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ DRAFT_SCHEMA_VERSION = 1
 DEFAULT_API_TYPE = "ollama"
 DEFAULT_MODEL_NAME = "qwen3.5:35b-a3b"
 DEFAULT_SKIP_GENERATED_FORMATIVE_MEMORIES = False
+DEFAULT_STRICT_CANDIDATE_FACT_ANCHORING = False
 BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS = {
     "observation_history_length": 1_000_000,
     "situation_perception_history_length": 25,
@@ -273,6 +275,9 @@ def make_draft_for_selection(
           "skip_generated_formative_memories": (
               DEFAULT_SKIP_GENERATED_FORMATIVE_MEMORIES
           ),
+          "strict_candidate_fact_anchoring": (
+              DEFAULT_STRICT_CANDIDATE_FACT_ANCHORING
+          ),
       },
   }
 
@@ -454,6 +459,20 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
         )
     )
 
+  anchored_contexts = {
+      item["name"]: _anchored_player_specific_context(
+          item,
+          enabled=run_settings.get("strict_candidate_fact_anchoring", False),
+      )
+      for item in contestants
+  }
+  anchored_memories = {
+      item["name"]: _anchored_player_specific_memories(
+          item,
+          enabled=run_settings.get("strict_candidate_fact_anchoring", False),
+      )
+      for item in contestants
+  }
   instances.append(
       prefab_lib.InstanceConfig(
           prefab="formative_memories_initializer__GameMaster",
@@ -462,14 +481,8 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
               "name": "Backstory Initializer",
               "next_game_master_name": gm_name,
               "shared_memories": shared_memories,
-              "player_specific_context": {
-                  item["name"]: item.get("player_specific_context", "")
-                  for item in contestants
-              },
-              "player_specific_memories": {
-                  item["name"]: item.get("player_specific_memories", [])
-                  for item in contestants
-              },
+              "player_specific_context": anchored_contexts,
+              "player_specific_memories": anchored_memories,
               "skip_formative_memories_for": (
                   player_names
                   if run_settings.get("skip_generated_formative_memories", False)
@@ -569,3 +582,108 @@ def _scene_type_gm_prompt_overrides(
   if extra_components_index:
     payload["extra_components_index"] = extra_components_index
   return payload
+
+
+def _anchored_player_specific_context(
+    contestant: dict[str, Any],
+    *,
+    enabled: bool,
+) -> str:
+  context = str(contestant.get("player_specific_context", "") or "")
+  if not enabled:
+    return context
+  facts = _contestant_fact_anchor_lines(contestant)
+  if not facts:
+    return context
+  prefix = "\n".join([
+      "Strict factual anchor instructions:",
+      (
+          "Do not contradict known basic biographical facts for this contestant."
+      ),
+      (
+          "Keep age, job, pets, siblings, and other fixed personal details"
+          " consistent. If a detail is unknown, avoid inventing a conflicting"
+          " one."
+      ),
+      *facts,
+  ])
+  if not context.strip():
+    return prefix
+  return f"{prefix}\n\n{context}"
+
+
+def _anchored_player_specific_memories(
+    contestant: dict[str, Any],
+    *,
+    enabled: bool,
+) -> list[str]:
+  memories = list(contestant.get("player_specific_memories", []) or [])
+  if not enabled:
+    return memories
+  facts = _contestant_fact_anchor_lines(contestant)
+  if not facts:
+    return memories
+  return [
+      (
+          "Fixed factual anchors: Do not contradict these known basics. "
+          + " ".join(facts)
+      ),
+      *memories,
+  ]
+
+
+def _contestant_fact_anchor_lines(contestant: dict[str, Any]) -> list[str]:
+  lines = []
+  name = str(contestant.get("name") or "").strip()
+  if name:
+    lines.append(f"Name: {name}.")
+  age = contestant.get("age")
+  if age not in (None, ""):
+    lines.append(f"Age: {age}.")
+
+  source_persona = contestant.get("source_persona") or {}
+  occupation = (
+      source_persona.get("core_identity", {}).get("occupation")
+      or _context_line_value(contestant.get("player_specific_context", ""), "Occupation")
+  )
+  if occupation:
+    lines.append(f"Occupation: {occupation}.")
+
+  hometown = source_persona.get("core_identity", {}).get("hometown")
+  if hometown:
+    lines.append(f"Hometown: {hometown}.")
+
+  lines.extend(
+      _memory_fact_lines(
+          contestant.get("player_specific_memories", []) or []
+      )
+  )
+  deduped = []
+  for line in lines:
+    clean = str(line).strip()
+    if clean and clean not in deduped:
+      deduped.append(clean)
+  return deduped
+
+
+def _context_line_value(context: str, label: str) -> str:
+  prefix = f"{label}:"
+  for line in str(context or "").splitlines():
+    if line.startswith(prefix):
+      return line.removeprefix(prefix).strip()
+  return ""
+
+
+def _memory_fact_lines(memories: list[str]) -> list[str]:
+  facts = []
+  for memory in memories:
+    text = str(memory).strip()
+    lowered = text.lower()
+    if not text:
+      continue
+    if "sibling" in lowered and text not in facts:
+      facts.append(text if text.endswith(".") else f"{text}.")
+      continue
+    if re.search(r"\b(dog|cat|pets?)\b", lowered) and text not in facts:
+      facts.append(text if text.endswith(".") else f"{text}.")
+  return facts[:4]

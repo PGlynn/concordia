@@ -7,6 +7,8 @@ const {
   __setTestState,
   collectConfigForm,
   renderConfigTab,
+  runContextLabel,
+  summarizeDraftContext,
 } = require("./app.js");
 
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
@@ -34,14 +36,14 @@ function withFakeDocument(elements, fn) {
   }
 }
 
-function testRunSettingsHtmlIncludesSkipGeneratedFormativeMemoriesCheckbox() {
+function testRunSettingsHtmlIncludesStrictFactAnchoringCheckbox() {
   assert.match(
     html,
-    /id="skipGeneratedFormativeMemories"[^>]*>\s*Skip generated formative memories for selected contestants/
+    /id="strictCandidateFactAnchoring"[^>]*>\s*Strict candidate fact anchoring for selected contestants/
   );
 }
 
-function testRenderAndCollectConfigFormPersistSkipGeneratedFormativeMemories() {
+function testRenderAndCollectConfigFormPersistStrictFactAnchoring() {
   const previousState = __getTestState();
   const draft = {
     schema_version: 1,
@@ -61,7 +63,7 @@ function testRenderAndCollectConfigFormPersistSkipGeneratedFormativeMemories() {
       model_name: "qwen3.5:35b-a3b",
       start_paused: true,
       checkpoint_every_step: true,
-      skip_generated_formative_memories: true,
+      strict_candidate_fact_anchoring: true,
     },
     scene_defaults: {
       main_game_master_name: "Show Runner",
@@ -97,23 +99,42 @@ function testRenderAndCollectConfigFormPersistSkipGeneratedFormativeMemories() {
   });
   withFakeDocument(elements, () => {
     renderConfigTab();
-    assert.equal(elements.skipGeneratedFormativeMemories.checked, true);
+    assert.equal(elements.strictCandidateFactAnchoring.checked, true);
     assert.equal(
-      JSON.parse(elements.configRawJson.value).run.skip_generated_formative_memories,
+      JSON.parse(elements.configRawJson.value).run.strict_candidate_fact_anchoring,
       true
     );
 
-    elements.skipGeneratedFormativeMemories.checked = false;
+    elements.strictCandidateFactAnchoring.checked = false;
     collectConfigForm();
 
     assert.equal(
-      __getTestState().draft.run.skip_generated_formative_memories,
+      __getTestState().draft.run.strict_candidate_fact_anchoring,
       false
     );
   });
   __setTestState(previousState);
 }
 
-testRunSettingsHtmlIncludesSkipGeneratedFormativeMemoriesCheckbox();
-testRenderAndCollectConfigFormPersistSkipGeneratedFormativeMemories();
-console.log("app_skip_formative_memories_test passed");
+function testSummaryAndHistoryLabelIncludeStrictFactAnchoring() {
+  const summary = summarizeDraftContext({
+    contestants: [{name: "Alex"}, {name: "Blake"}],
+    scenes: [],
+    run: {
+      max_steps: 6,
+      model_name: "qwen3.5:35b-a3b",
+      strict_candidate_fact_anchoring: true,
+    },
+  });
+
+  assert.equal(summary.strict_candidate_fact_anchoring, true);
+  assert.equal(
+    runContextLabel(summary),
+    "Alex vs Blake | 6 steps | qwen3.5:35b-a3b | starts paused | checkpoints | strict fact anchors"
+  );
+}
+
+testRunSettingsHtmlIncludesStrictFactAnchoringCheckbox();
+testRenderAndCollectConfigFormPersistStrictFactAnchoring();
+testSummaryAndHistoryLabelIncludeStrictFactAnchoring();
+console.log("app_fact_anchoring_test passed");

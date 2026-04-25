@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from absl.testing import absltest
 
@@ -147,6 +148,7 @@ class RunnerTest(absltest.TestCase):
             "start_paused": False,
             "checkpoint_every_step": False,
             "skip_generated_formative_memories": True,
+            "strict_candidate_fact_anchoring": True,
         },
     }
 
@@ -165,6 +167,38 @@ class RunnerTest(absltest.TestCase):
     self.assertFalse(summary["start_paused"])
     self.assertFalse(summary["checkpoint_every_step"])
     self.assertTrue(summary["skip_generated_formative_memories"])
+    self.assertTrue(summary["strict_candidate_fact_anchoring"])
+
+  def test_on_step_cleans_duplicate_speaker_prefix_and_preserves_raw_action(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    record = runner.RunRecord(
+        run_id="run",
+        status="running",
+        run_dir=paths.runs_dir / "run",
+        started_at="2026-04-21T00:00:00+00:00",
+    )
+    class FakeControl:
+
+      def broadcast_step(self, _step_data):
+        return None
+
+    manager._on_step(  # pylint: disable=protected-access
+        record,
+        FakeControl(),
+        SimpleNamespace(
+            step=1,
+            acting_entity="Marcus Vale",
+            action="Marcus Vale: Marcus Vale: I am glad you're here.",
+            entity_actions={},
+        ),
+    )
+
+    self.assertEqual(record.transcript[0]["action"], "I am glad you're here.")
+    self.assertEqual(
+        record.transcript[0]["raw_action"],
+        "Marcus Vale: Marcus Vale: I am glad you're here.",
+    )
 
   def test_model_builder_falls_back_to_local_ollama_when_lm_enabled(self):
     paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))

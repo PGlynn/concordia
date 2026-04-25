@@ -38,6 +38,7 @@ class ConfigIoTest(absltest.TestCase):
     self.assertEqual(draft["run"]["api_type"], "ollama")
     self.assertEqual(draft["run"]["model_name"], "qwen3.5:35b-a3b")
     self.assertFalse(draft["run"]["skip_generated_formative_memories"])
+    self.assertFalse(draft["run"]["strict_candidate_fact_anchoring"])
 
   def test_default_draft_exposes_stock_basic_entity_history_lengths(self):
     draft = config_io.make_default_draft()
@@ -172,6 +173,20 @@ class ConfigIoTest(absltest.TestCase):
         created["id"],
         draft["contestants"][1]["id"],
     ]
+    draft["scenes"] = [
+        {
+            **scene,
+            "participants": [
+                created["name"] if name == "Marcus Vale" else name
+                for name in scene.get("participants", [])
+            ],
+            "premise": {
+                created["name"] if name == "Marcus Vale" else name: lines
+                for name, lines in (scene.get("premise") or {}).items()
+            },
+        }
+        for scene in draft["scenes"]
+    ]
 
     path = config_io.save_draft(draft, "marcus_yale_draft", paths)
     stored = config_io.load_json(path)
@@ -234,6 +249,37 @@ class ConfigIoTest(absltest.TestCase):
         initializer.params["skip_formative_memories_for"],
         [item["name"] for item in loaded["contestants"]],
     )
+
+  def test_strict_candidate_fact_anchoring_persists_and_sets_initializer(self):
+    draft = config_io.make_default_draft()
+    draft["run"]["strict_candidate_fact_anchoring"] = True
+    draft["contestants"][0]["player_specific_memories"] = [
+        "He was the oldest of three siblings.",
+        "He has a dog named Cuddles.",
+    ]
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+
+    config_io.save_draft(draft, "strict_fact_anchor", paths)
+    loaded = config_io.load_draft("strict_fact_anchor", paths)
+    config = config_io.build_config(loaded)
+
+    self.assertTrue(loaded["run"]["strict_candidate_fact_anchoring"])
+    initializer = next(
+        item
+        for item in config.instances
+        if item.role == prefab_lib.Role.INITIALIZER
+    )
+    context = initializer.params["player_specific_context"][
+        loaded["contestants"][0]["name"]
+    ]
+    memories = initializer.params["player_specific_memories"][
+        loaded["contestants"][0]["name"]
+    ]
+    self.assertIn("Strict factual anchor instructions:", context)
+    self.assertIn("Age: 34.", context)
+    self.assertIn("Occupation: Enterprise software sales director.", context)
+    self.assertIn("three siblings", context)
+    self.assertIn("dog named Cuddles", memories[0])
 
   def test_scene_type_instructions_override_persists_through_draft_json(self):
     draft = config_io.make_default_draft()
