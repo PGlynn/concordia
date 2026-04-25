@@ -78,6 +78,11 @@ user-entered API key. The local adapters both support `sample_text` and
 `sample_choice`. Other providers continue to use Concordia's stock
 `language_model_setup`.
 
+If the Loveline server runs under `launchd` with a minimal `PATH`, set
+`LOVELINE_CODEX_CLI_PATH` to the absolute Codex CLI binary path in the service
+environment. The Codex OAuth shim also checks common Homebrew install paths such
+as `/opt/homebrew/bin/codex` before falling back to plain `codex`.
+
 ## Artifact Layout
 
 Each run creates:

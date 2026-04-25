@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from types import SimpleNamespace
 
@@ -37,6 +38,13 @@ class FakeSubprocessModule:
     )
 
 
+class MissingBinarySubprocessModule:
+
+  def run(self, command, **kwargs):
+    del kwargs
+    raise FileNotFoundError(command[0])
+
+
 class CodexOauthShimTest(absltest.TestCase):
 
   def test_sample_text_builds_safe_codex_exec_command_and_reads_last_message(self):
@@ -46,6 +54,8 @@ class CodexOauthShimTest(absltest.TestCase):
         model_name="gpt-5.4",
         subprocess_module=fake_subprocess,
         working_directory="/tmp/loveline_debug",
+        which=lambda command: None,
+        is_executable=lambda path: path == "/opt/homebrew/bin/codex",
     )
 
     result = model.sample_text(
@@ -60,7 +70,7 @@ class CodexOauthShimTest(absltest.TestCase):
     self.assertEqual(
         call["command"][:10],
         [
-            "codex",
+            "/opt/homebrew/bin/codex",
             "exec",
             "--model",
             "gpt-5.4",
@@ -83,6 +93,56 @@ class CodexOauthShimTest(absltest.TestCase):
     self.assertTrue(call["text"])
     self.assertIn("Return only the answer text.", call["input"])
     self.assertIn("Stop before emitting any of these terminators", call["input"])
+
+  def test_sample_text_prefers_explicit_codex_cli_env_var(self):
+    fake_subprocess = FakeSubprocessModule()
+    fake_subprocess.set_output("Answer: done")
+    custom_path = os.path.join(self.create_tempdir().full_path, "codex-custom")
+    with open(custom_path, "w", encoding="utf-8") as handle:
+      handle.write("#!/bin/sh\n")
+    os.chmod(custom_path, 0o755)
+    model = codex_oauth_shim.LovelineCodexOAuthLanguageModel(
+        model_name="gpt-5.4",
+        subprocess_module=fake_subprocess,
+        environment={codex_oauth_shim._CODEX_EXECUTABLE_ENV_VAR: custom_path},
+        which=lambda command: None,
+        is_executable=lambda path: path == custom_path,
+    )
+
+    model.sample_text("Alex says")
+
+    self.assertEqual(fake_subprocess.calls[0]["command"][0], custom_path)
+
+  def test_sample_text_uses_common_codex_path_when_path_lookup_fails(self):
+    fake_subprocess = FakeSubprocessModule()
+    fake_subprocess.set_output("Answer: done")
+    model = codex_oauth_shim.LovelineCodexOAuthLanguageModel(
+        model_name="gpt-5.4",
+        subprocess_module=fake_subprocess,
+        environment={},
+        which=lambda command: None,
+        is_executable=lambda path: path == "/opt/homebrew/bin/codex",
+    )
+
+    model.sample_text("Alex says")
+
+    self.assertEqual(
+        fake_subprocess.calls[0]["command"][0],
+        "/opt/homebrew/bin/codex",
+    )
+
+  def test_sample_text_translates_missing_codex_binary(self):
+    model = codex_oauth_shim.LovelineCodexOAuthLanguageModel(
+        model_name="gpt-5.4",
+        subprocess_module=MissingBinarySubprocessModule(),
+        codex_executable="/missing/codex",
+    )
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        codex_oauth_shim._CODEX_EXECUTABLE_ENV_VAR,
+    ):
+      model.sample_text("Alex says")
 
   def test_sample_choice_parses_json_choice_from_codex_output(self):
     fake_subprocess = FakeSubprocessModule()

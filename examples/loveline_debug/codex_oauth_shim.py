@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 from typing import Any, Protocol, override
@@ -15,6 +16,23 @@ from examples.loveline_debug import ollama_shim
 
 
 _MAX_MULTIPLE_CHOICE_ATTEMPTS = 4
+_CODEX_EXECUTABLE_ENV_VAR = "LOVELINE_CODEX_CLI_PATH"
+_COMMON_CODEX_EXECUTABLE_PATHS = (
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+)
+
+
+class _ExecutableResolver(Protocol):
+
+  def __call__(self, command: str, /) -> str | None:
+    ...
+
+
+class _ExecutablePredicate(Protocol):
+
+  def __call__(self, path: str, /) -> bool:
+    ...
 
 
 class _SubprocessModule(Protocol):
@@ -32,6 +50,10 @@ class LovelineCodexOAuthLanguageModel(language_model.LanguageModel):
       *,
       system_message: str = ollama_shim._DEFAULT_SYSTEM_MESSAGE,
       working_directory: str | os.PathLike[str] | None = None,
+      codex_executable: str | os.PathLike[str] | None = None,
+      environment: Mapping[str, str] | None = None,
+      which: _ExecutableResolver = shutil.which,
+      is_executable: _ExecutablePredicate | None = None,
       subprocess_module: _SubprocessModule = subprocess,
       temporary_directory: type[tempfile.TemporaryDirectory[str]] = (
           tempfile.TemporaryDirectory
@@ -42,8 +64,20 @@ class LovelineCodexOAuthLanguageModel(language_model.LanguageModel):
     self._working_directory = Path(
         working_directory if working_directory is not None else Path.cwd()
     )
+    self._environment = environment if environment is not None else os.environ
+    self._which = which
+    self._is_executable = is_executable or _is_executable_file
     self._subprocess = subprocess_module
     self._temporary_directory = temporary_directory
+    self._codex_executable = str(
+        codex_executable
+        if codex_executable is not None
+        else _resolve_codex_executable(
+            environment=self._environment,
+            which=self._which,
+            is_executable=self._is_executable,
+        )
+    )
 
   @override
   def sample_text(
@@ -161,10 +195,12 @@ class LovelineCodexOAuthLanguageModel(language_model.LanguageModel):
       raise TimeoutError(
           f"Codex OAuth request timed out after {float(timeout):.1f}s."
       ) from exc
+    except FileNotFoundError as exc:
+      raise RuntimeError(_missing_codex_executable_message()) from exc
 
   def _build_command(self, output_path: Path) -> list[str]:
     return [
-        "codex",
+        self._codex_executable,
         "exec",
         "--model",
         self._model_name,
@@ -182,6 +218,51 @@ class LovelineCodexOAuthLanguageModel(language_model.LanguageModel):
     ]
 
 
+def _resolve_codex_executable(
+    *,
+    environment: Mapping[str, str],
+    which: _ExecutableResolver,
+    is_executable: _ExecutablePredicate,
+) -> str:
+  configured = str(environment.get(_CODEX_EXECUTABLE_ENV_VAR, "") or "").strip()
+  if configured:
+    resolved = _resolve_configured_executable(
+        configured,
+        which=which,
+        is_executable=is_executable,
+    )
+    if resolved is not None:
+      return resolved
+
+  for candidate in _COMMON_CODEX_EXECUTABLE_PATHS:
+    if is_executable(candidate):
+      return candidate
+
+  discovered = which("codex")
+  if discovered:
+    return discovered
+
+  return "codex"
+
+
+def _resolve_configured_executable(
+    configured: str,
+    *,
+    which: _ExecutableResolver,
+    is_executable: _ExecutablePredicate,
+) -> str | None:
+  candidate = Path(configured).expanduser()
+  if is_executable(str(candidate)):
+    return str(candidate)
+  if os.sep not in configured and (os.altsep is None or os.altsep not in configured):
+    return which(configured)
+  return None
+
+
+def _is_executable_file(path: str) -> bool:
+  return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
 def _codex_exec_failure(command: Sequence[str], completed: Any) -> str:
   del command
   stderr = str(getattr(completed, "stderr", "") or "").strip()
@@ -190,6 +271,15 @@ def _codex_exec_failure(command: Sequence[str], completed: Any) -> str:
   return (
       "Codex OAuth request failed with exit code "
       f"{getattr(completed, 'returncode', '?')}: {details}"
+  )
+
+
+def _missing_codex_executable_message() -> str:
+  checked_paths = ", ".join(repr(path) for path in _COMMON_CODEX_EXECUTABLE_PATHS)
+  return (
+      "Codex OAuth request could not find the Codex CLI. Set "
+      f"{_CODEX_EXECUTABLE_ENV_VAR} to an executable path or install `codex` "
+      f"in PATH. Checked common paths: {checked_paths}."
   )
 
 
