@@ -41,6 +41,10 @@ class ConfigIoTest(absltest.TestCase):
     self.assertEqual(draft["run"]["model_name"], "qwen3.5:35b-a3b")
     self.assertFalse(draft["run"]["skip_generated_formative_memories"])
     self.assertFalse(draft["run"]["strict_candidate_fact_anchoring"])
+    self.assertEqual(
+        draft["run"]["spoken_output_verifier"],
+        config_io.DEFAULT_SPOKEN_OUTPUT_VERIFIER,
+    )
 
   def test_run_model_preset_helpers_cover_known_and_custom_paths(self):
     self.assertEqual(

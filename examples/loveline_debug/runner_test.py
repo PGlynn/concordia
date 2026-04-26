@@ -150,6 +150,11 @@ class RunnerTest(absltest.TestCase):
             "checkpoint_every_step": False,
             "skip_generated_formative_memories": True,
             "strict_candidate_fact_anchoring": True,
+            "spoken_output_verifier": {
+                "enabled": True,
+                "max_retries": 3,
+                "topic_schedule": ["family", "values"],
+            },
         },
     }
 
@@ -171,6 +176,9 @@ class RunnerTest(absltest.TestCase):
     self.assertFalse(summary["checkpoint_every_step"])
     self.assertTrue(summary["skip_generated_formative_memories"])
     self.assertTrue(summary["strict_candidate_fact_anchoring"])
+    self.assertTrue(summary["spoken_output_verifier_enabled"])
+    self.assertEqual(summary["spoken_output_verifier_max_retries"], 3)
+    self.assertEqual(summary["spoken_output_topic_schedule_length"], 2)
 
   def test_draft_summary_ignores_stale_model_preset_when_model_is_custom(self):
     draft = {
@@ -243,6 +251,7 @@ class RunnerTest(absltest.TestCase):
         "model_name": "qwen3.5:35b-a3b",
         "api_key": None,
         "disable_language_model": False,
+        "spoken_output_verifier": None,
     }])
 
   def test_model_builder_uses_loveline_ollama_shim_for_ollama(self):
@@ -310,8 +319,46 @@ class RunnerTest(absltest.TestCase):
             "model_name": "gpt-test",
             "api_key": "key",
             "disable_language_model": False,
+            "spoken_output_verifier": None,
         }],
     )
+
+  def test_model_builder_passes_spoken_output_verifier_to_setup(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    calls = []
+
+    def fake_setup(**kwargs):
+      calls.append(kwargs)
+      return object()
+
+    original_setup = runner.language_model_setup.setup
+    runner.language_model_setup.setup = fake_setup
+    try:
+      manager._build_model(  # pylint: disable=protected-access
+          {
+              "disable_language_model": False,
+              "spoken_output_verifier": {
+                  "enabled": True,
+                  "max_retries": 4,
+                  "topic_schedule": ["family", "work"],
+              },
+          }
+      )
+    finally:
+      runner.language_model_setup.setup = original_setup
+
+    self.assertEqual(calls, [{
+        "api_type": "ollama",
+        "model_name": "qwen3.5:35b-a3b",
+        "api_key": None,
+        "disable_language_model": False,
+        "spoken_output_verifier": {
+            "enabled": True,
+            "max_retries": 4,
+            "topic_schedule": ["family", "work"],
+        },
+    }])
 
   def test_run_thread_passes_entity_controls_through_snapshot_to_config(self):
     paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))

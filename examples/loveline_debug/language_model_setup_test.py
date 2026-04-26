@@ -3,6 +3,7 @@
 from absl.testing import absltest
 
 from examples.loveline_debug import language_model_setup
+from examples.loveline_debug import output_guard
 
 
 class LanguageModelSetupTest(absltest.TestCase):
@@ -62,6 +63,29 @@ class LanguageModelSetupTest(absltest.TestCase):
             "disable_language_model": False,
         }],
     )
+
+  def test_setup_wraps_model_when_spoken_output_verifier_is_enabled(self):
+    class FakeLovelineOllama:
+      pass
+
+    original_cls = language_model_setup.ollama_shim.LovelineOllamaLanguageModel
+    language_model_setup.ollama_shim.LovelineOllamaLanguageModel = (
+        lambda **_: FakeLovelineOllama()
+    )
+    try:
+      model = language_model_setup.setup(
+          api_type="ollama",
+          model_name="qwen3.5:35b-a3b",
+          disable_language_model=False,
+          spoken_output_verifier={"enabled": True, "max_retries": 4},
+      )
+    finally:
+      language_model_setup.ollama_shim.LovelineOllamaLanguageModel = (
+          original_cls
+      )
+
+    self.assertIsInstance(model, output_guard.SpokenOutputGuard)
+    self.assertEqual(model._config.max_retries, 4)  # pylint: disable=protected-access
 
   def test_codex_oauth_uses_loveline_codex_adapter(self):
     calls = []

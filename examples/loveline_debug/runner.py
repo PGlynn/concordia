@@ -240,6 +240,9 @@ class RunManager:
         model_name=run_settings.get("model_name") or config_io.DEFAULT_MODEL_NAME,
         api_key=run_settings.get("api_key") or None,
         disable_language_model=False,
+        spoken_output_verifier=(
+            run_settings.get("spoken_output_verifier") or None
+        ),
     )
 
   def _on_step(
@@ -428,6 +431,15 @@ def _draft_summary(draft: dict[str, Any]) -> dict[str, Any]:
       ),
       "strict_candidate_fact_anchoring": bool(
           run.get("strict_candidate_fact_anchoring")
+      ),
+      "spoken_output_verifier_enabled": bool(
+          (run.get("spoken_output_verifier") or {}).get("enabled")
+      ),
+      "spoken_output_verifier_max_retries": (
+          (run.get("spoken_output_verifier") or {}).get("max_retries")
+      ),
+      "spoken_output_topic_schedule_length": len(
+          (run.get("spoken_output_verifier") or {}).get("topic_schedule") or []
       ),
   }
 

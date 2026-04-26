@@ -20,6 +20,7 @@ from concordia.typing import scene as scene_lib
 from examples.loveline_debug import basic_entity_controls
 from examples.loveline_debug import dialogic_and_dramaturgic as loveline_dialogic_and_dramaturgic
 from examples.loveline_debug import formative_memories_initializer as loveline_formative_memories_initializer
+from examples.loveline_debug import output_guard
 from examples.loveline_debug import scene_type_instructions
 
 
@@ -44,6 +45,9 @@ DEFAULT_API_TYPE = RUN_MODEL_PRESETS[DEFAULT_MODEL_PRESET]["api_type"]
 DEFAULT_MODEL_NAME = RUN_MODEL_PRESETS[DEFAULT_MODEL_PRESET]["model_name"]
 DEFAULT_SKIP_GENERATED_FORMATIVE_MEMORIES = False
 DEFAULT_STRICT_CANDIDATE_FACT_ANCHORING = False
+DEFAULT_SPOKEN_OUTPUT_VERIFIER = (
+    output_guard.SpokenOutputGuardConfig().to_payload()
+)
 BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS = {
     "observation_history_length": 1_000_000,
     "situation_perception_history_length": 25,
@@ -292,6 +296,9 @@ def make_draft_for_selection(
           ),
           "strict_candidate_fact_anchoring": (
               DEFAULT_STRICT_CANDIDATE_FACT_ANCHORING
+          ),
+          "spoken_output_verifier": copy.deepcopy(
+              DEFAULT_SPOKEN_OUTPUT_VERIFIER
           ),
       },
   }

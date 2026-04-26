@@ -41,6 +41,7 @@ class ServerTest(absltest.TestCase):
     self.assertFalse(payload["run"]["disable_language_model"])
     self.assertEqual(payload["run"]["api_type"], "ollama")
     self.assertEqual(payload["run"]["model_name"], "qwen3.5:35b-a3b")
+    self.assertFalse(payload["run"]["spoken_output_verifier"]["enabled"])
 
   def test_delete_run_api_removes_saved_artifacts(self):
     paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
