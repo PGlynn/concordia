@@ -319,7 +319,6 @@ class RunnerTest(absltest.TestCase):
             "model_name": "gpt-test",
             "api_key": "key",
             "disable_language_model": False,
-            "spoken_output_verifier": None,
         }],
     )
 
