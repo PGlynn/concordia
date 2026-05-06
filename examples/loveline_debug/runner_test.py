@@ -47,6 +47,40 @@ class RunnerTest(absltest.TestCase):
         dict,
     )
 
+  def test_status_exposes_capabilities_and_active_polling_fields(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    record = runner.RunRecord(
+        run_id="run_1",
+        status="running",
+        run_dir=paths.runs_dir / "run_1",
+        started_at="2026-05-05T00:00:00+00:00",
+        transcript=[{
+            "step": 1,
+            "acting_entity": "Alex",
+            "action": "Hi there.",
+        }],
+    )
+    control = simulation_server.SimulationServer(html_content="")
+    control.current_step_data = {"step": 1}
+    manager._active = record  # pylint: disable=protected-access
+    manager._active_control = control  # pylint: disable=protected-access
+
+    payload = manager.status()
+
+    self.assertEqual(payload["active_run_id"], "run_1")
+    self.assertEqual(payload["capabilities"], {
+        "can_start_run": False,
+        "can_control_run": True,
+        "supports_run_detail": True,
+    })
+    self.assertEqual(payload["transcript"][0]["action"], "Hi there.")
+    self.assertEqual(payload["recent_turns"][0]["acting_entity"], "Alex")
+    self.assertEqual(payload["active"]["active_speaker"], "Alex")
+    self.assertEqual(payload["active"]["transcript_turn_count"], 1)
+    self.assertTrue(payload["active"]["transcript_available"])
+    self.assertEqual(payload["active"]["control"]["current_step"], 1)
+
   def test_delete_run_removes_saved_artifacts(self):
     paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
     manager = runner.RunManager(paths)
@@ -77,6 +111,44 @@ class RunnerTest(absltest.TestCase):
     with self.assertRaisesRegex(RuntimeError, "active"):
       manager.delete_run("run_1")
     self.assertTrue(run_dir.exists())
+
+  def test_get_run_detail_prefers_saved_status_and_surfaces_saved_files(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    manager = runner.RunManager(paths)
+    run_dir = paths.runs_dir / "run_1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "run_id": "run_1",
+        "status": "completed",
+        "summary": {"selected_pair": ["Alex", "Blake"]},
+        "artifacts": {"html_log": str(run_dir / "log.html")},
+    }
+    saved_status = {
+        "run_id": "run_1",
+        "status": "completed",
+        "summary": {"selected_pair": ["Alex", "Blake"]},
+        "transcript": [{
+            "step": 1,
+            "acting_entity": "Alex",
+            "action": "I made coffee before dawn.",
+        }],
+    }
+    (run_dir / "manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    (run_dir / "status.json").write_text(
+        json.dumps(saved_status), encoding="utf-8"
+    )
+
+    payload = manager.get_run_detail("run_1")
+
+    self.assertEqual(payload["run_id"], "run_1")
+    self.assertEqual(payload["run"]["transcript"][0]["action"], "I made coffee before dawn.")
+    self.assertEqual(payload["transcript"][0]["acting_entity"], "Alex")
+    self.assertEqual(payload["run"]["active_speaker"], "Alex")
+    self.assertEqual(payload["manifest"], manifest)
+    self.assertEqual(payload["saved_status"], saved_status)
+    self.assertEqual(payload["capabilities"]["supports_run_detail"], True)
 
   def test_checkpoint_wrapper_preserves_plain_json_checkpoint_write(self):
     scene_type = scene_lib.SceneTypeSpec(

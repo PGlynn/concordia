@@ -90,14 +90,28 @@ class RunManager:
 
   def status(self) -> dict[str, Any]:
     with self._lock:
-      active = self._active.to_dict() if self._active else None
+      active_record = self._active
       control = self._active_control
       control_state = self._control_state(control) if control else None
+      capabilities = self._capabilities_locked()
+      active = (
+          self._serialize_run_record(active_record, control_state)
+          if active_record
+          else None
+      )
     return {
         "active": active,
+        "active_run_id": active.get("run_id") if active else None,
         "control": control_state,
+        "capabilities": capabilities,
+        "transcript": active.get("transcript", []) if active else [],
+        "recent_turns": active.get("transcript", []) if active else [],
         "recent_runs": self.list_runs(),
     }
+
+  def capabilities(self) -> dict[str, bool]:
+    with self._lock:
+      return self._capabilities_locked()
 
   def control(self, command: str) -> dict[str, Any]:
     with self._lock:
@@ -144,6 +158,47 @@ class RunManager:
           )
       )
     return runs[:20]
+
+  def get_run_detail(self, run_id: str) -> dict[str, Any]:
+    run_dir = _safe_run_dir(self._paths.runs_dir, run_id)
+    with self._lock:
+      active_record = (
+          self._active
+          if self._active and self._active.run_id == run_id
+          else None
+      )
+      active_control = self._active_control if active_record else None
+      control_state = (
+          self._control_state(active_control) if active_control else None
+      )
+
+    manifest_payload = _load_json_if_exists(run_dir / "manifest.json")
+    status_payload = _load_json_if_exists(run_dir / "status.json")
+    if active_record:
+      run_payload = self._serialize_run_record(active_record, control_state)
+    elif status_payload:
+      run_payload = _serialize_saved_run(run_dir, status_payload)
+    elif manifest_payload:
+      run_payload = _serialize_saved_run(run_dir, manifest_payload)
+    elif run_dir.exists() and run_dir.is_dir():
+      run_payload = _serialize_saved_run(
+          run_dir, {"run_id": run_id, "run_dir": str(run_dir)}
+      )
+    else:
+      raise FileNotFoundError(f"Run {run_id} does not exist.")
+
+    transcript = list(run_payload.get("transcript") or [])
+    return {
+        "run_id": run_id,
+        "run": run_payload,
+        "active": run_payload,
+        "control": control_state,
+        "capabilities": self.capabilities(),
+        "transcript": transcript,
+        "recent_turns": transcript,
+        "manifest": manifest_payload,
+        "saved_status": status_payload,
+    }
 
   def delete_run(self, run_id: str) -> dict[str, Any]:
     run_dir = _safe_run_dir(self._paths.runs_dir, run_id)
@@ -292,6 +347,32 @@ class RunManager:
         else "paused",
     }
 
+  def _capabilities_locked(self) -> dict[str, bool]:
+    can_start_run = not (
+        self._active and self._active.status in ("starting", "running")
+    )
+    can_control_run = self._active_control is not None
+    return {
+        "can_start_run": can_start_run,
+        "can_control_run": can_control_run,
+        "supports_run_detail": True,
+    }
+
+  @staticmethod
+  def _serialize_run_record(
+      record: RunRecord,
+      control_state: dict[str, Any] | None = None,
+  ) -> dict[str, Any]:
+    payload = record.to_dict()
+    payload["control"] = _json_safe(control_state) if control_state else None
+    payload["active_speaker"] = _active_speaker_from_transcript(
+        payload.get("transcript")
+    )
+    payload["transcript_available"] = bool(payload.get("transcript"))
+    payload["transcript_turn_count"] = len(payload.get("transcript") or [])
+    payload["supports_run_detail"] = True
+    return payload
+
 
 def _json_safe(value: Any, seen: set[int] | None = None) -> Any:
   """Converts Concordia run callback data into JSON-serializable values."""
@@ -367,6 +448,36 @@ def _enrich_run_manifest(run_dir: Path, manifest: dict[str, Any]) -> dict[str, A
     summary["snapshot_at"] = snapshot.get("snapshot_at")
     enriched["summary"] = {**summary, **(enriched.get("summary") or {})}
   return enriched
+
+
+def _serialize_saved_run(run_dir: Path, payload: dict[str, Any]) -> dict[str, Any]:
+  serialized = _json_safe(_enrich_run_manifest(run_dir, payload))
+  transcript = list(serialized.get("transcript") or [])
+  serialized["active_speaker"] = _active_speaker_from_transcript(transcript)
+  serialized["transcript_available"] = bool(transcript)
+  serialized["transcript_turn_count"] = len(transcript)
+  serialized["supports_run_detail"] = True
+  return serialized
+
+
+def _load_json_if_exists(path: Path) -> dict[str, Any] | None:
+  if not path.exists():
+    return None
+  try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+  except json.JSONDecodeError:
+    return None
+  return payload if isinstance(payload, dict) else None
+
+
+def _active_speaker_from_transcript(transcript: Any) -> str:
+  if not isinstance(transcript, list) or not transcript:
+    return ""
+  last_entry = transcript[-1]
+  if not isinstance(last_entry, dict):
+    return ""
+  speaker = last_entry.get("speaker") or last_entry.get("acting_entity")
+  return str(speaker or "")
 
 
 def _safe_run_dir(runs_root: Path, run_id: str) -> Path:

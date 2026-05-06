@@ -63,6 +63,9 @@ class LovelineDebugApp:
             self._send_json(app.runs.status())
           elif parsed.path == "/api/runs":
             self._send_json(app.runs.list_runs())
+          elif parsed.path.startswith("/api/runs/"):
+            run_id = parse.unquote(parsed.path.removeprefix("/api/runs/"))
+            self._send_json(app.runs.get_run_detail(run_id))
           elif parsed.path == "/api/compare":
             self._send_json(self._compare_runs(parsed))
           elif parsed.path.startswith("/api/inspect/"):

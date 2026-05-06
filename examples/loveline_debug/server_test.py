@@ -65,6 +65,69 @@ class ServerTest(absltest.TestCase):
     self.assertEqual(payload, {"status": "deleted", "run_id": "run_1"})
     self.assertFalse(run_dir.exists())
 
+  def test_status_api_exposes_capabilities(self):
+    httpd, thread = self._start_server()
+    try:
+      port = httpd.server_address[1]
+      with request.urlopen(
+          f"http://127.0.0.1:{port}/api/status"
+      ) as response:  # nosec: local test server
+        payload = json.loads(response.read().decode("utf-8"))
+    finally:
+      httpd.shutdown()
+      httpd.server_close()
+      thread.join()
+
+    self.assertEqual(payload["capabilities"], {
+        "can_start_run": True,
+        "can_control_run": False,
+        "supports_run_detail": True,
+    })
+    self.assertIn("active_run_id", payload)
+    self.assertIn("recent_turns", payload)
+
+  def test_run_detail_api_returns_saved_status_manifest_and_transcript(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    run_dir = paths.runs_dir / "run_1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "run_id": "run_1",
+        "status": "completed",
+        "summary": {"selected_pair": ["Alex", "Blake"]},
+    }
+    saved_status = {
+        "run_id": "run_1",
+        "status": "completed",
+        "transcript": [{
+            "step": 1,
+            "acting_entity": "Alex",
+            "action": "I brought coffee.",
+        }],
+    }
+    (run_dir / "manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    (run_dir / "status.json").write_text(
+        json.dumps(saved_status), encoding="utf-8"
+    )
+    httpd, thread = self._start_server(paths)
+    try:
+      port = httpd.server_address[1]
+      with request.urlopen(
+          f"http://127.0.0.1:{port}/api/runs/run_1"
+      ) as response:  # nosec: local test server
+        payload = json.loads(response.read().decode("utf-8"))
+    finally:
+      httpd.shutdown()
+      httpd.server_close()
+      thread.join()
+
+    self.assertEqual(payload["run_id"], "run_1")
+    self.assertEqual(payload["run"]["transcript"][0]["action"], "I brought coffee.")
+    self.assertEqual(payload["active"]["active_speaker"], "Alex")
+    self.assertEqual(payload["manifest"], manifest)
+    self.assertEqual(payload["saved_status"], saved_status)
+
   def test_index_serves_cache_busted_app_script_with_no_store_headers(self):
     httpd, thread = self._start_server()
     try:
