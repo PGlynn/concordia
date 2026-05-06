@@ -156,6 +156,37 @@ class ConfigIoTest(absltest.TestCase):
         loaded["contestants"][0]["entity_params"],
     )
 
+  def test_snapshot_for_run_coerces_integral_float_history_lengths(self):
+    draft = config_io.make_default_draft()
+    draft["contestants"][0]["entity_params"].update({
+        "observation_history_length": 1_000_000.0,
+        "situation_perception_history_length": 25.0,
+        "self_perception_history_length": 1_000_000.0,
+        "person_by_situation_history_length": 5.0,
+    })
+
+    snapshot = config_io.snapshot_for_run(draft, "run_1")
+    config = config_io.build_config(snapshot)
+
+    entity_instances = [
+        item for item in config.instances if item.role == prefab_lib.Role.ENTITY
+    ]
+    history_params = entity_instances[0].params
+    self.assertEqual(history_params["observation_history_length"], 1_000_000)
+    self.assertIsInstance(history_params["observation_history_length"], int)
+    self.assertEqual(
+        history_params["situation_perception_history_length"], 25
+    )
+    self.assertIsInstance(
+        history_params["situation_perception_history_length"], int
+    )
+    self.assertEqual(history_params["self_perception_history_length"], 1_000_000)
+    self.assertIsInstance(history_params["self_perception_history_length"], int)
+    self.assertEqual(history_params["person_by_situation_history_length"], 5)
+    self.assertIsInstance(
+        history_params["person_by_situation_history_length"], int
+    )
+
   def test_saved_draft_stores_selected_ids_not_contestant_copies(self):
     draft = config_io.make_default_draft()
     draft["contestants"][0]["entity_params"]["observation_history_length"] = 41

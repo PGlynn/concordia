@@ -65,6 +65,48 @@ class ServerTest(absltest.TestCase):
     self.assertEqual(payload, {"status": "deleted", "run_id": "run_1"})
     self.assertFalse(run_dir.exists())
 
+  def test_run_api_coerces_integral_float_history_lengths(self):
+    paths = config_io.StarterPaths(Path(self.create_tempdir().full_path))
+    app = server.LovelineDebugApp(paths)
+    captured = {}
+    draft = config_io.make_default_draft()
+    draft["contestants"][0]["entity_params"].update({
+        "observation_history_length": 1_000_000.0,
+        "situation_perception_history_length": 25.0,
+        "self_perception_history_length": 1_000_000.0,
+        "person_by_situation_history_length": 5.0,
+    })
+
+    def fake_run_thread(payload, record, control):
+      del record, control
+      captured["draft"] = payload
+
+    app.runs._run_thread = fake_run_thread  # pylint: disable=protected-access
+    httpd = server.ReusableThreadingTCPServer(("127.0.0.1", 0), app.make_handler())
+    thread = threading.Thread(target=httpd.serve_forever)
+    thread.start()
+    try:
+      port = httpd.server_address[1]
+      req = request.Request(
+          f"http://127.0.0.1:{port}/api/run",
+          method="POST",
+          data=json.dumps({"draft": draft}).encode("utf-8"),
+          headers={"Content-Type": "application/json"},
+      )
+      with request.urlopen(req) as response:  # nosec: local test server
+        payload = json.loads(response.read().decode("utf-8"))
+    finally:
+      httpd.shutdown()
+      httpd.server_close()
+      thread.join()
+
+    self.assertTrue(payload["run_id"])
+    history = captured["draft"]["contestants"][0]["entity_params"]
+    self.assertEqual(history["observation_history_length"], 1_000_000)
+    self.assertIsInstance(history["observation_history_length"], int)
+    self.assertEqual(history["self_perception_history_length"], 1_000_000)
+    self.assertIsInstance(history["self_perception_history_length"], int)
+
   def test_status_api_exposes_capabilities(self):
     httpd, thread = self._start_server()
     try:

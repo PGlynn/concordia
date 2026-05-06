@@ -57,6 +57,11 @@ BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS = {
 STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS = (
     basic_entity_controls.STOCK_BASIC_ENTITY_COMPONENT_DEFAULTS
 )
+_DRAFT_INTEGER_PATHS = (
+    ("run", "max_steps"),
+)
+_SCENE_TYPE_INTEGER_FIELDS = ("rounds",)
+_SCENE_INTEGER_FIELDS = ("num_rounds",)
 
 
 class DraftValidationError(ValueError):
@@ -142,6 +147,53 @@ def _apply_candidate_defaults(candidate: dict[str, Any]) -> dict[str, Any]:
     component_cfg.setdefault(key, value)
   candidate["gender"] = candidate.get("gender") or _candidate_gender(candidate)
   return candidate
+
+
+def _coerce_integral_float(value: Any) -> Any:
+  if isinstance(value, float) and value.is_integer():
+    return int(value)
+  return value
+
+
+def sanitize_runtime_draft(draft: dict[str, Any]) -> dict[str, Any]:
+  """Coerces known integer draft fields when JSON transport turns them into floats."""
+  sanitized = copy.deepcopy(draft)
+
+  for path in _DRAFT_INTEGER_PATHS:
+    target = sanitized
+    for key in path[:-1]:
+      if not isinstance(target, dict):
+        target = None
+        break
+      target = target.get(key)
+    if isinstance(target, dict) and path[-1] in target:
+      target[path[-1]] = _coerce_integral_float(target[path[-1]])
+
+  for contestant in sanitized.get("contestants", []) or []:
+    if not isinstance(contestant, dict):
+      continue
+    entity_params = contestant.get("entity_params")
+    if not isinstance(entity_params, dict):
+      continue
+    for field in BASIC_ENTITY_HISTORY_LENGTH_DEFAULTS:
+      if field in entity_params:
+        entity_params[field] = _coerce_integral_float(entity_params[field])
+
+  for scene_type in sanitized.get("scene_types", {}).values():
+    if not isinstance(scene_type, dict):
+      continue
+    for field in _SCENE_TYPE_INTEGER_FIELDS:
+      if field in scene_type:
+        scene_type[field] = _coerce_integral_float(scene_type[field])
+
+  for scene in sanitized.get("scenes", []) or []:
+    if not isinstance(scene, dict):
+      continue
+    for field in _SCENE_INTEGER_FIELDS:
+      if field in scene:
+        scene[field] = _coerce_integral_float(scene[field])
+
+  return sanitized
 
 
 def _source_candidates(paths: StarterPaths) -> list[dict[str, Any]]:
@@ -577,7 +629,7 @@ def build_config(draft: dict[str, Any]) -> prefab_lib.Config:
 
 
 def snapshot_for_run(draft: dict[str, Any], run_id: str) -> dict[str, Any]:
-  snapshot = hydrate_draft(draft)
+  snapshot = hydrate_draft(sanitize_runtime_draft(draft))
   snapshot["run_id"] = run_id
   snapshot["snapshot_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
   validate_draft(snapshot)

@@ -62,6 +62,7 @@ class RunManager:
     self._active_control: simulation_server.SimulationServer | None = None
 
   def start_run(self, draft: dict[str, Any]) -> RunRecord:
+    draft = config_io.sanitize_runtime_draft(draft)
     with self._lock:
       if self._active and self._active.status in ("starting", "running"):
         raise RuntimeError(f"Run {self._active.run_id} is already active.")
